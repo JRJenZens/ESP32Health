@@ -4,7 +4,7 @@ A local-first dashboard designed specifically for **Seeed Studio MR60BHA2** and 
 
 Use the same interface as a standalone web app on your computer, iPhone or iPad, or as a custom Home Assistant dashboard card. Danish UI, warm burgundy and rose design, no build step and no runtime dependencies.
 
-**Version 0.1.0 is an early preview.** Software scenarios and browser layouts have been tested; physical radar behavior, installation in a live Home Assistant dashboard and HACS installation have not yet been verified. HACS support here means a custom-repository package, not inclusion in the default HACS catalog.
+**Version 0.1.1 is an early preview.** Software scenarios and browser layouts have been tested; physical radar behavior, installation in a live Home Assistant dashboard and HACS installation have not yet been verified. HACS support here means a custom-repository package, not inclusion in the default HACS catalog.
 
 ![ESP32Health with synthetic demonstration data](docs/preview.png)
 
@@ -47,12 +47,36 @@ python3 -m http.server 8320 --bind 0.0.0.0
 
 Open `http://<computer-LAN-address>:8320` on the same network. Python's development server has no login/TLS and should not be exposed to the internet. Serve only this app directory; use the Home Assistant card or an HTTPS-capable web server for regular use. If the app is loaded over HTTPS, Home Assistant must also be reachable over HTTPS/WSS. This is a responsive browser app, not a native iOS application or an offline PWA.
 
-## 2. Home Assistant dashboard card
+## 2. Install from GitHub in Home Assistant (Marketplace / HACS)
 
-### Manual installation
+[![Open ESP32Health in Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=JRJenZens&repository=ESP32Health&category=plugin)
+
+**[Dansk installationsvejledning](docs/installation-da.md)**
+
+Use the button above in current Home Assistant versions with Marketplace. For older HACS installations, use [the legacy HACS link](https://my.home-assistant.io/redirect/hacs_repository/?owner=JRJenZens&repository=ESP32Health&category=plugin).
+
+1. Open Marketplace/HACS, then its menu **Custom repositories**.
+2. Add `https://github.com/JRJenZens/ESP32Health`, category **Dashboard** (internally `plugin`).
+3. Open **ESP32Health**, select **Download**, and choose **v0.1.1** or newer.
+4. Refresh the Home Assistant frontend when prompted.
+5. Edit your dashboard, add the **ESP32Health** custom card, then select the radar entities in its visual editor and save.
+
+Releases from v0.1.1 are normal GitHub releases so users do not need to enable prereleases. The software remains an early preview. This repository is added as a custom repository; it is not listed in the default catalog. HACS' own validator runs in GitHub Actions.
+
+### Card configuration
+
+```yaml
+type: custom:esp32health-card
+devices: []
+```
+
+The card uses the existing HA login. No extra access token is required. If your installation does not register dashboard resources automatically, add `/hacsfiles/ESP32Health/ESP32Health.js` as a **JavaScript module** under dashboard resources, then reload.
+
+### Manual installation (alternative)
+
 
 1. Copy **`dist/ESP32Health.js`** to **`/config/www/esp32health/ESP32Health.js`** on your Home Assistant installation.
-2. Add a dashboard resource with URL **`/local/esp32health/ESP32Health.js?v=0.1.0`**, type **JavaScript module**.
+2. Add a dashboard resource with URL **`/local/esp32health/ESP32Health.js?v=0.1.1`**, type **JavaScript module**.
 3. Add a card of type **`custom:esp32health-card`**. You can use the visual card editor to discover/add devices and choose entities, then press **Save** in Home Assistant.
 
 Minimal configuration:
@@ -66,10 +90,6 @@ devices: []
 For a full example, see [examples/lovelace.yaml](examples/lovelace.yaml). Use a panel view or a wide section for the complete dashboard. Narrow cards reflow to a single column.
 
 The card uses Home Assistant's existing `hass` object, connection and permissions; it does **not** need another token. Changes in the normal **Enheder** tab are temporary inside HA. Persist them through **Edit dashboard → Edit card** and its visual editor, or download the card configuration and paste the JSON into the YAML editor (JSON is valid YAML). Changes made in the standalone app are saved locally in that browser and do not update your Lovelace dashboard.
-
-### HACS custom repository
-
-In HACS, add `https://github.com/JRJenZens/ESP32Health` as a **Dashboard** custom repository and install it. Use the resource URL shown by HACS, normally `/hacsfiles/ESP32Health/ESP32Health.js`. Refresh the frontend and add the card as above. This installation route is packaged for testing and is not yet verified against a real HACS installation.
 
 This is a frontend card. It does not create new HA entities, install ESPHome firmware, or require a Python custom integration.
 

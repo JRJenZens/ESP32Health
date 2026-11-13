@@ -1,5 +1,5 @@
-/* ESP32Health v0.1.0 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.1.0';
+/* ESP32Health v0.1.1 | MIT | https://github.com/JRJenZens/ESP32Health */
+export const VERSION = '0.1.1';
 export const ROLES = {
   MR60BHA2: { presence: 'Tilstedeværelse', heart_rate: 'Puls', breath_rate: 'Vejrtrækning', distance: 'Afstand', num_targets: 'Antal personer (estimat)', illuminance: 'Lysniveau' },
   MR60FDA2: { presence: 'Tilstedeværelse', fall: 'Fald registreret', illuminance: 'Lysniveau' },

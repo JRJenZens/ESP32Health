@@ -16,10 +16,18 @@ For dine egne enheder vælger du **Tilslut Home Assistant**, indtaster adressen 
 
 Tokenet gemmes kun, mens siden er åben. Valg af enheder gemmes i denne browser. Webappen ændrer ikke din ESPHome-firmware eller Home Assistants indstillinger.
 
-## Vis det inde i Home Assistant
+## Installér direkte fra GitHub i Home Assistant
+
+[Åbn ESP32Health i Marketplace](https://my.home-assistant.io/redirect/marketplace_repository/?owner=JRJenZens&repository=ESP32Health&category=plugin)
+
+Du kan installere og opdatere kortet gennem **Marketplace / HACS**. Tilføj repository `https://github.com/JRJenZens/ESP32Health` som typen **Dashboard**, download **v0.1.1** eller nyere, og genindlæs Home Assistant-siden. Tilføj derefter kortet **ESP32Health** på dit dashboard.
+
+Se [trinvis dansk installationsvejledning](docs/installation-da.md).
+
+## Manuel installation (alternativ)
 
 1. Kopiér `dist/ESP32Health.js` til `/config/www/esp32health/ESP32Health.js` på Home Assistant.
-2. Tilføj ressourcen `/local/esp32health/ESP32Health.js?v=0.1.0` som **JavaScript-modul** i dashboardets ressourcer.
+2. Tilføj ressourcen `/local/esp32health/ESP32Health.js?v=0.1.1` som **JavaScript-modul** i dashboardets ressourcer.
 3. Tilføj et kort med denne konfiguration:
 
 ```yaml
