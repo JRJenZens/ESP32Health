@@ -1,23 +1,59 @@
-name: Tests
+name: Home Assistant app checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  test:
+  software:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: pip install -r esp32health/requirements.txt
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
       - run: npm test
-      - name: Check JavaScript syntax
+      - name: JavaScript syntax
         run: |
-          node --check dist/ESP32Health.js
-          node --check ha-client.js
-          node --check app.js
-          node --check demo.js
-      - name: Check metadata
-        run: python3 -c "import json; json.load(open('hacs.json')); json.load(open('package.json'))"
+          node --check esp32health/web/dashboard.js
+          node --check esp32health/web/app.js
+  app-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: frenck/action-app-linter@v2
+        with:
+          path: ./esp32health
+  container:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64'
+      - uses: docker/setup-buildx-action@v3
+      - name: Build app image
+        run: docker buildx build --platform linux/${{ matrix.arch }} --load -t esp32health-test ./esp32health
+      - name: Start app and check readiness
+        run: |
+          docker run -d --name esp32health-smoke -e SUPERVISOR_TOKEN=synthetic-ci-token esp32health-test
+          for attempt in $(seq 1 30); do
+            if docker exec esp32health-smoke python -c "import urllib.request,json; d=json.load(urllib.request.urlopen('http://127.0.0.1:8099/health',timeout=3)); assert d['version']=='0.2.0'"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs esp32health-smoke
+          exit 1
+      - name: Stop test container
+        if: always()
+        run: docker rm -f esp32health-smoke || true
