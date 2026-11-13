@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — 2026-11-14
+
+- Replace the standalone web app and HACS dashboard card with a Home Assistant app installed from the Apps store.
+- Ingress web UI, optional sidebar entry and automatic server-side Supervisor authentication.
+- Persisted app-wide device mapping, read-only HA bridge and existing radar views/history.
+- Home Assistant app documentation, configuration validation and container checks for amd64 and aarch64.
+
 ## 0.1.1 — 2026-11-14
 
 - Install/open links for Home Assistant Marketplace and legacy HACS.

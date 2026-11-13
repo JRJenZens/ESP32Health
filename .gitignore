@@ -7,3 +7,7 @@ secrets.yaml
 *.local.*
 coverage/
 work/
+
+__pycache__/
+*.pyc
+.venv/

@@ -1,28 +1,12 @@
 import assert from 'node:assert/strict';
 if(!globalThis.HTMLElement)globalThis.HTMLElement=class {};
 if(!globalThis.customElements)globalThis.customElements={get:()=>false,define:()=>{}};
-const core=await import('../dist/ESP32Health.js');
-const {HAClient,websocketURL}=await import('../ha-client.js');
+const core=await import('../esp32health/web/dashboard.js');
 const now=1800000000000;
 const state=(v,unit,age=0)=>({state:String(v),attributes:{unit_of_measurement:unit},last_updated:new Date(now-age*1000).toISOString()});
 const device={id:'test',model:'MR60BHA2',name:'Test',entities:{presence:'binary_sensor.presence',heart_rate:'sensor.heart',breath_rate:'sensor.breath',distance:'sensor.distance',num_targets:'sensor.targets'}};
 const fresh=()=>({'binary_sensor.presence':state('on',null,7200),'sensor.heart':state(68),'sensor.breath':state(14),'sensor.distance':state(112,'cm'),'sensor.targets':state(1)});
-class MockSocket {
-  static instances=[];
-  constructor(url){this.url=url;this.readyState=1;this.sent=[];MockSocket.instances.push(this);}
-  send(s){this.sent.push(JSON.parse(s));}
-  close(){this.readyState=3;this.onclose?.();}
-  async message(data){await this.onmessage({data:JSON.stringify(data)});}
-}
-const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 export const scenarios=[
-  ['Native HA connection loss is detected even without hass.connected',()=>{
-    assert.equal(core.connectionOnline({states:{},connection:{connected:false}}),false);
-    assert.equal(core.connectionOnline({states:{},connection:{connected:true}}),true);
-    assert.equal(core.connectionOnline({states:{},connected:false}),false);
-    assert.equal(core.connectionOnline(null),false);
-  }],
-
   ['Unknown, unavailable, whitespace and NaN never become zero',()=>{
     for(const s of [undefined,state('unknown'),state('unavailable'),state(''),state('  '),state('NaN'),state('Infinity')])assert.equal(core.numberState(s),null);
     assert.equal(core.numberState(state(0)),0);assert.equal(core.binaryState(state('unknown')),null);assert.equal(core.binaryState(state('off')),false);
@@ -74,40 +58,6 @@ export const scenarios=[
     assert.ok(csv.startsWith('\uFEFF'));assert.ok(csv.includes("'=HYPERLINK"));assert.ok(csv.includes(`'=SUM(1,2) ""test""`));
     assert.equal(core.escapeHTML('<img onerror="x">'),'&lt;img onerror=&quot;x&quot;&gt;');
   }],
-  ['WebSocket URLs support subpaths and reject credentials or query strings',()=>{
-    assert.equal(websocketURL('http://homeassistant.local:8123/'),'ws://homeassistant.local:8123/api/websocket');
-    assert.equal(websocketURL('https://example.invalid/ha/'),'wss://example.invalid/ha/api/websocket');
-    for(const url of ['file:///x','http://user:pass@example.invalid','https://example.invalid/?token=x'])assert.throws(()=>websocketURL(url));
-  }],
-  ['WebSocket authenticates, buffers events, removes states and clears secrets',async()=>{
-    const snapshots=[];const client=new HAClient({WebSocketClass:MockSocket,onState:h=>snapshots.push(h)});
-    client.connect('http://example.invalid:8123','test-credential');const socket=MockSocket.instances.at(-1);
-    try{
-      await socket.message({type:'auth_required'});assert.deepEqual(socket.sent[0],{type:'auth',access_token:'test-credential'});
-      const initialized=socket.message({type:'auth_ok'});await tick();
-      const sub=socket.sent.find(m=>m.type==='subscribe_events');assert.ok(sub);
-      await socket.message({type:'result',id:sub.id,success:true,result:null});await tick();
-      const get=socket.sent.find(m=>m.type==='get_states');assert.ok(get);
-      await socket.message({type:'event',event:{event_type:'state_changed',data:{entity_id:'sensor.x',new_state:{entity_id:'sensor.x',state:'69'}}}});
-      await socket.message({type:'result',id:get.id,success:true,result:[{entity_id:'sensor.x',state:'68'}]});await initialized;
-      assert.equal(client.connected,true);assert.equal(client.states['sensor.x'].state,'69');
-      await socket.message({type:'event',event:{event_type:'state_changed',data:{entity_id:'sensor.x',new_state:null}}});assert.equal(client.states['sensor.x'],undefined);
-      const pending=client.callWS({type:'get_states'});const rejection=assert.rejects(pending,/lukket/);client.close();await rejection;
-      assert.equal(client._token,'');assert.equal(client.connected,false);assert.deepEqual(client.states,{});assert.equal(snapshots.at(-1).connected,false);
-    }finally{client.close();}
-  }],
-  ['Invalid authentication does not retry or retain credentials',async()=>{
-    const statuses=[];const client=new HAClient({WebSocketClass:MockSocket,onStatus:s=>statuses.push(s)});
-    client.connect('http://example.invalid','wrong');const socket=MockSocket.instances.at(-1);
-    await socket.message({type:'auth_invalid'});assert.equal(client._token,'');assert.equal(client._stopped,true);assert.match(statuses.at(-1),/afvist/);client.close();
-  }],
-  ['Synthetic demo fixtures produce usable vitals and readable history',async()=>{
-    const {createDemo}=await import('../demo.js');const demo=createDemo();
-    try{
-      assert.equal(demo.hass.demo,true);assert.equal(core.evaluateBHA(demo.config.devices[0],demo.hass.states).usable,true);
-      const result=await demo.hass.callWS({type:'history/history_during_period',start_time:new Date(Date.now()-3600000).toISOString(),end_time:new Date().toISOString(),entity_ids:['sensor.demo_heart_rate']});
-      assert.equal(core.normalizeHistory(result)['sensor.demo_heart_rate'].length,100);
-    }finally{demo.close();}
-  }],
+
 ];
 export async function runScenarios(){const passed=[];for(const [name,fn]of scenarios){await fn();passed.push(name);}return {passed:passed.length,scenarios:passed};}

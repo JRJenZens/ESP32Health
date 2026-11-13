@@ -1,5 +1,5 @@
-/* ESP32Health v0.1.1 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.1.1';
+/* ESP32Health v0.2.0 | MIT | https://github.com/JRJenZens/ESP32Health */
+export const VERSION = '0.2.0';
 export const ROLES = {
   MR60BHA2: { presence: 'Tilstedeværelse', heart_rate: 'Puls', breath_rate: 'Vejrtrækning', distance: 'Afstand', num_targets: 'Antal personer (estimat)', illuminance: 'Lysniveau' },
   MR60FDA2: { presence: 'Tilstedeværelse', fall: 'Fald registreret', illuminance: 'Lysniveau' },
@@ -7,7 +7,7 @@ export const ROLES = {
 export const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = (n, digits = 0) => Number.isFinite(n) ? new Intl.NumberFormat('da-DK', { maximumFractionDigits: digits }).format(n) : '—';
 const time = (v) => new Date(v).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
-export const connectionOnline = hass => Boolean(hass && (hass.connected ?? hass.connection?.connected ?? true));
+export const connectionOnline = hass => Boolean(hass?.connected);
 const available = (s) => Boolean(s && !['unknown', 'unavailable', '', null, undefined].includes(s.state));
 export function numberState(s) {
   if (!available(s) || typeof s.state === 'boolean' || !String(s.state).trim()) return null;
@@ -108,21 +108,16 @@ const css = `
 @media(prefers-reduced-motion:no-preference){.dot{transition:background .2s}}
 `;
 
-export class ESP32HealthCard extends HTMLElement {
+export class ESP32HealthDashboard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({mode:'open'});
-    this._config = {type:'custom:esp32health-card',devices:[]};
+    this._config = {devices:[]};
     this._tab = 'overview'; this._history = {}; this._hours = 6; this._historyState = 'idle';
     this._signature = ''; this._error = ''; this._historyRequest = 0;
-    this._connectionChanged=()=>{this._signature='';this.render();if(this._connected&&!this._editorMode){this._historyState='idle';void this.loadHistory();}};
     this.shadowRoot.addEventListener('click', e => this._click(e));
     this.shadowRoot.addEventListener('change', e => this._change(e));
   }
-  static getConfigElement() { return document.createElement('esp32health-editor'); }
-  static getStubConfig() { return {type:'custom:esp32health-card',title:'Dit hjem, i overblik',devices:[]}; }
-  getCardSize() { return 12; }
-  getGridOptions() { return {columns:'full',rows:'auto',min_columns:6}; }
   setConfig(config) {
     validateConfig(config);
     this._config = JSON.parse(JSON.stringify(config));
@@ -131,21 +126,17 @@ export class ESP32HealthCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
-    if(this.isConnected)this._bindConnection();
-    const signature = this._editorMode ? JSON.stringify([this._connected,Object.entries(hass.states || {}).map(([id,s])=>[id,s.attributes?.friendly_name])]) : JSON.stringify([this._connected, this._config.devices.map(d => Object.values(d.entities).map(id => hass.states?.[id]))]);
+    const signature = JSON.stringify([this._connected, this._config.devices.map(d => Object.values(d.entities).map(id => hass.states?.[id]))]);
     if (signature !== this._signature) { this._signature = signature; this.render(); }
-    if (!this._editorMode && this._historyState === 'idle' && this.isConnected && this._connected && this._config.devices.length) void this.loadHistory();
+    if (this._historyState === 'idle' && this.isConnected && this._connected && this._config.devices.length) void this.loadHistory();
   }
   connectedCallback() {
-    if(!this._editorMode)this._timer = setInterval(() => { if(this._tab!=='devices')this.render(); }, 15000);
-    this._bindConnection();
+    this._timer = setInterval(() => { if(this._tab!=='devices')this.render(); }, 15000);
     this.render();
-    if (!this._editorMode && this._hass && this._historyState === 'idle' && this._config.devices.length) void this.loadHistory();
+    if (this._hass && this._historyState === 'idle' && this._config.devices.length) void this.loadHistory();
   }
-  disconnectedCallback() { this._unbindConnection(); clearInterval(this._timer); this._historyRequest++; if(this._historyState === 'loading') this._historyState = 'idle'; }
+  disconnectedCallback() { clearInterval(this._timer); this._historyRequest++; if(this._historyState === 'loading') this._historyState = 'idle'; }
   get _connected() { return connectionOnline(this._hass); }
-  _unbindConnection(){if(this._connection){for(const event of ['ready','disconnected'])this._connection.removeEventListener?.(event,this._connectionChanged);}this._connection=null;}
-  _bindConnection(){const conn=this._hass?.connection;if(conn===this._connection)return;this._unbindConnection();this._connection=conn;for(const event of ['ready','disconnected'])conn?.addEventListener?.(event,this._connectionChanged);}
   async loadHistory() {
     const ids = [...new Set(this._config.devices.flatMap(d => Object.values(d.entities)).filter(Boolean))];
     if (!this._connected || !ids.length || !this._hass.callWS) return;
@@ -198,12 +189,12 @@ export class ESP32HealthCard extends HTMLElement {
     if (action === 'remove') this._commit({...this._config,devices:this._config.devices.filter(d=>d.id!==b.dataset.id)});
     if (action === 'csv' && this._historyState === 'ready') {
       const url = URL.createObjectURL(new Blob([toCSV(this._history,this._config.devices)],{type:'text/csv;charset=utf-8'}));
-      const a = document.createElement('a'); a.href = url; a.download = `ESP32Health${this._hass?.demo ? '-DEMO' : ''}-${new Date().toISOString().slice(0,10)}.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const a = document.createElement('a'); a.href = url; a.download = `ESP32Health-${new Date().toISOString().slice(0,10)}.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
     if (action === 'yaml') {
-      const text = JSON.stringify(this._config,null,2); // JSON is also valid YAML for HA's card editor.
+      const text = JSON.stringify(this._config,null,2);
       const url = URL.createObjectURL(new Blob([text],{type:'application/json'}));
-      const a = document.createElement('a'); a.href=url; a.download='ESP32Health-card.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const a = document.createElement('a'); a.href=url; a.download='ESP32Health-opsætning.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
   }
   _change(e) {
@@ -230,7 +221,7 @@ export class ESP32HealthCard extends HTMLElement {
     }
     const fall = this._connected ? binaryState(s('fall')) : null;
     const kind = fall===true?'bad':fall===false?'good':'muted';
-    return `<article class="device">${header}<div class="sensor-body"><div class="fall-visual ${kind}"><div class="ring">${icon('shield')}</div><strong>${fall===true?'Muligt fald registreret':fall===false?'Intet fald registreret':'Faldstatus er ukendt'}</strong><div class="hint">${fall===true?'Kontrollér personen og omgivelserne':fall===false?'Sensorens aktuelle registrering':'Kontrollér forbindelse og valg af entitet'}</div></div><div class="status ${kind}"><i class="dot"></i>${fall===true?'Faldsignalet er aktivt':fall===false?'Faldsignalet er inaktivt':'Intet tilgængeligt faldsignal'}</div>${details([['Tilstedeværelse',presenceLabel],['Lys',lux===null?'—':fmt(lux)+' lx'],['Status ændret',this._connected&&s('fall')?time(s('fall').last_changed):'—']])}<p class="hint" style="margin-top:13px">Ingen alarmudsendelse fra dette kort. Notifikationer skal opsættes i Home Assistant.</p></div></article>`;
+    return `<article class="device">${header}<div class="sensor-body"><div class="fall-visual ${kind}"><div class="ring">${icon('shield')}</div><strong>${fall===true?'Muligt fald registreret':fall===false?'Intet fald registreret':'Faldstatus er ukendt'}</strong><div class="hint">${fall===true?'Kontrollér personen og omgivelserne':fall===false?'Sensorens aktuelle registrering':'Kontrollér forbindelse og valg af entitet'}</div></div><div class="status ${kind}"><i class="dot"></i>${fall===true?'Faldsignalet er aktivt':fall===false?'Faldsignalet er inaktivt':'Intet tilgængeligt faldsignal'}</div>${details([['Tilstedeværelse',presenceLabel],['Lys',lux===null?'—':fmt(lux)+' lx'],['Status ændret',this._connected&&s('fall')?time(s('fall').last_changed):'—']])}<p class="hint" style="margin-top:13px">Notifikationer opsættes i Home Assistant.</p></div></article>`;
   }
   _chart() {
     if (this._historyState==='loading') return '<div class="chart-empty" role="status">Henter historik fra Home Assistant…</div>';
@@ -262,12 +253,12 @@ export class ESP32HealthCard extends HTMLElement {
   }
   _settings() {
     const states=this._hass?.states || {};
-    return `<div class="toolbar" style="margin-bottom:18px"><button class="btn primary" data-action="discover" ${!this._connected||this._discovering?'disabled':''}>${this._discovering?'Søger…':'Find Seeed-enheder'}</button><button class="btn" data-action="add" data-model="MR60BHA2">+ MR60BHA2</button><button class="btn" data-action="add" data-model="MR60FDA2">+ MR60FDA2</button><button class="btn" data-action="yaml">Hent kortkonfiguration</button></div>${this._error?`<div class="error" role="status">${escapeHTML(this._error)}</div>`:''}<p class="note">Kontrollér alle forslag. Vælg de entiteter, der hører til den enkelte radar. Navne alene garanterer ikke korrekt kobling.</p><div class="device-list">${this._config.devices.map(d=>`<section class="settings-device"><div class="toolbar"><h2>${escapeHTML(d.model)}</h2><button class="btn" data-action="remove" data-id="${escapeHTML(d.id)}">Fjern fra visningen</button></div><div class="fields"><label class="field">Navn<input data-device="${escapeHTML(d.id)}" data-key="name" value="${escapeHTML(d.name)}" maxlength="100"></label><label class="field">Område<input data-device="${escapeHTML(d.id)}" data-key="area" value="${escapeHTML(d.area)}" maxlength="100"></label>${Object.entries(ROLES[d.model]).map(([role,label])=>{
+    return `<div class="toolbar" style="margin-bottom:18px"><button class="btn primary" data-action="discover" ${!this._connected||this._discovering?'disabled':''}>${this._discovering?'Søger…':'Find Seeed-enheder'}</button><button class="btn" data-action="add" data-model="MR60BHA2">+ MR60BHA2</button><button class="btn" data-action="add" data-model="MR60FDA2">+ MR60FDA2</button><button class="btn" data-action="yaml">Eksportér opsætning</button></div>${this._error?`<div class="error" role="status">${escapeHTML(this._error)}</div>`:''}<p class="note">Kontrollér alle forslag. Vælg de entiteter, der hører til den enkelte radar. Navne alene garanterer ikke korrekt kobling.</p><div class="device-list">${this._config.devices.map(d=>`<section class="settings-device"><div class="toolbar"><h2>${escapeHTML(d.model)}</h2><button class="btn" data-action="remove" data-id="${escapeHTML(d.id)}">Fjern fra visningen</button></div><div class="fields"><label class="field">Navn<input data-device="${escapeHTML(d.id)}" data-key="name" value="${escapeHTML(d.name)}" maxlength="100"></label><label class="field">Område<input data-device="${escapeHTML(d.id)}" data-key="area" value="${escapeHTML(d.area)}" maxlength="100"></label>${Object.entries(ROLES[d.model]).map(([role,label])=>{
       const domain=['presence','fall'].includes(role)?'binary_sensor.':'sensor.';
       const current=d.entities[role];
       const ids=Object.keys(states).filter(id=>id.startsWith(domain)); if(current&&!ids.includes(current))ids.push(current);ids.sort();
       return `<label class="field">${label}<select data-device="${escapeHTML(d.id)}" data-key="${role}" data-entity="true"><option value="">Ikke valgt</option>${ids.map(id=>`<option value="${escapeHTML(id)}" ${id===current?'selected':''}>${escapeHTML(states[id]?.attributes?.friendly_name || id)} — ${escapeHTML(id)}</option>`).join('')}</select></label>`;
-    }).join('')}</div></section>`).join('')}</div>${this._editorMode?'':'<p class="note">I den selvstændige webapp gemmes koblinger lokalt i browseren. I Home Assistant skal ændringer gemmes via korteditoren; valg her er kun midlertidige.</p>'}`;
+    }).join('')}</div></section>`).join('')}</div><p class="note">Opsætningen gemmes i Home Assistant-appen og bruges på alle dine enheder. Status for lagringen vises øverst.</p>`;
   }
   render() {
     if (!this.shadowRoot) return;
@@ -276,23 +267,7 @@ export class ESP32HealthCard extends HTMLElement {
     const activeFalls=this._connected?devices.filter(d=>binaryState(states[d.entities.fall])===true):[];
     const present=this._connected?devices.filter(d=>binaryState(states[d.entities.presence])===true).length:0;
     const mapped=devices.filter(d=>Object.values(d.entities).some(Boolean)).length;
-    if(this._editorMode) {this.shadowRoot.innerHTML=`<style>${css}</style><div>${this._settings()}</div>`;return;}
-    this.shadowRoot.innerHTML=`<style>${css}</style><ha-card><div class="shell"><aside class="side"><div class="brand">${icon('pulse')}<span>ESP32<span>Health</span></span></div><div class="caption">Dit overblik</div>${[['overview','grid','Overblik'],['history','history','Historik'],['devices','settings','Enheder']].map(([id,i,label])=>`<button class="nav ${this._tab===id?'active':''}" data-action="tab" data-tab="${id}" aria-label="${label}" aria-pressed="${this._tab===id}">${icon(i)}<span>${label}</span></button>`).join('')}<div class="side-foot"><strong>Lokalt. Kontaktløst. Dit.</strong>ESPHome → Home Assistant<br>ESP32Health ${VERSION}</div></aside><main class="body"><div class="topbar"><div class="breadcrumb">Dit hjem <span aria-hidden="true">/</span> <b>${this._tab==='overview'?'Overblik':this._tab==='history'?'Historik':'Enheder'}</b></div><span class="pill ${this._connected?'':'muted'}"><i class="dot"></i>${this._hass?.demo?'Demoforbindelse':this._connected?'Home Assistant tilsluttet':'Home Assistant afbrudt'}</span></div>${this._hass?.demo?'<div class="demo" role="status"><b>Demotilstand</b> · Alle værdier og enheder er syntetiske eksempler. Ingen rigtige sensorer er tilsluttet.</div>':''}<div class="heading"><div><div class="caption">ESP32Health</div><h1>${escapeHTML(this._tab==='overview'?(this._config.title || 'Dit hjem, i overblik'):this._tab==='history'?'Se tilbage på målingerne':'Dine enheder')}</h1><p class="sub">${this._tab==='overview'?'Kontaktløs registrering af puls, vejrtrækning og mulige fald.':this._tab==='history'?'Se registrerede sensorværdier og hent dem som CSV.':'Forbind dine Seeed-radarer med de rigtige sensordata.'}</p></div>${this._tab==='overview'?`<button class="btn" data-action="tab" data-tab="devices">${icon('settings')}Enheder</button>`:''}</div>${!this._connected&&devices.length?'<div class="alert" role="status">Liveforbindelsen er afbrudt. Aktuel puls, vejrtrækning og faldstatus kan ikke vises.</div>':''}${activeFalls.map(d=>`<div class="alert" role="alert">${icon('shield')}<div><b>Muligt fald · ${escapeHTML(d.name)}</b><br>Kontrollér personen og omgivelserne. Sensorens faldsignal er aktivt.</div></div>`).join('')}${this._tab==='devices'?this._settings():!devices.length?`<div class="panel empty">${icon('radar')}<h2>Giv dine sensorer en plads</h2><p class="sub">Tilføj en MR60BHA2 til puls og vejrtrækning<br>eller en MR60FDA2 til faldregistrering.</p><button class="btn primary" data-action="tab" data-tab="devices">Opsæt enheder ${icon('arrow')}</button></div>`:this._tab==='history'?this._historyPanel()+this._events():`<div class="summary"><div class="stat"><small>Enheder i overblikket</small><strong>${devices.length.toString().padStart(2,'0')}</strong><em>${mapped} med valgte entiteter</em></div><div class="stat"><small>Radarer med tilstedeværelse</small><strong>${this._connected?present.toString().padStart(2,'0'):'—'}</strong><em>Dette er ikke et persontal</em></div><div class="stat"><small>Aktive faldsignaler</small><strong>${this._connected?activeFalls.length.toString().padStart(2,'0'):'—'}</strong><em>Kun tilgængelige signaler</em></div><div class="stat"><small>Datakilde</small><strong style="font-size:17px;margin-top:13px">${this._hass?.demo?'Demo':'Home Assistant'}</strong><em>Ingen ekstra datasky</em></div></div><div class="section-head"><h2>Rum & sensorer</h2><span>${devices.length} enheder</span></div><div class="devices">${devices.map(d=>this._device(d)).join('')}</div>${this._historyPanel()}`}<footer class="bottom"><span>Sensorestimater · Ikke medicinsk udstyr eller et alarmsystem</span><span>Historik opdateres med knappen Opdatér</span></footer></main></div></ha-card>`;
+    this.shadowRoot.innerHTML=`<style>${css}</style><ha-card><div class="shell"><aside class="side"><div class="brand">${icon('pulse')}<span>ESP32<span>Health</span></span></div><div class="caption">Dit overblik</div>${[['overview','grid','Overblik'],['history','history','Historik'],['devices','settings','Enheder']].map(([id,i,label])=>`<button class="nav ${this._tab===id?'active':''}" data-action="tab" data-tab="${id}" aria-label="${label}" aria-pressed="${this._tab===id}">${icon(i)}<span>${label}</span></button>`).join('')}<div class="side-foot"><strong>Lokalt. Kontaktløst. Dit.</strong>ESPHome → Home Assistant<br>ESP32Health ${VERSION}</div></aside><main class="body"><div class="topbar"><div class="breadcrumb">Dit hjem <span aria-hidden="true">/</span> <b>${this._tab==='overview'?'Overblik':this._tab==='history'?'Historik':'Enheder'}</b></div><span class="pill ${this._connected?'':'muted'}"><i class="dot"></i>${this._connected?'Home Assistant tilsluttet':'Home Assistant afbrudt'}</span></div><div class="heading"><div><div class="caption">ESP32Health</div><h1>${escapeHTML(this._tab==='overview'?(this._config.title || 'Dit hjem, i overblik'):this._tab==='history'?'Se tilbage på målingerne':'Dine enheder')}</h1><p class="sub">${this._tab==='overview'?'Kontaktløs registrering af puls, vejrtrækning og mulige fald.':this._tab==='history'?'Se registrerede sensorværdier og hent dem som CSV.':'Forbind dine Seeed-radarer med de rigtige sensordata.'}</p></div>${this._tab==='overview'?`<button class="btn" data-action="tab" data-tab="devices">${icon('settings')}Enheder</button>`:''}</div>${!this._connected&&devices.length?'<div class="alert" role="status">Liveforbindelsen er afbrudt. Aktuel puls, vejrtrækning og faldstatus kan ikke vises.</div>':''}${activeFalls.map(d=>`<div class="alert" role="alert">${icon('shield')}<div><b>Muligt fald · ${escapeHTML(d.name)}</b><br>Kontrollér personen og omgivelserne. Sensorens faldsignal er aktivt.</div></div>`).join('')}${this._tab==='devices'?this._settings():!devices.length?`<div class="panel empty">${icon('radar')}<h2>Giv dine sensorer en plads</h2><p class="sub">Tilføj en MR60BHA2 til puls og vejrtrækning<br>eller en MR60FDA2 til faldregistrering.</p><button class="btn primary" data-action="tab" data-tab="devices">Opsæt enheder ${icon('arrow')}</button></div>`:this._tab==='history'?this._historyPanel()+this._events():`<div class="summary"><div class="stat"><small>Enheder i overblikket</small><strong>${devices.length.toString().padStart(2,'0')}</strong><em>${mapped} med valgte entiteter</em></div><div class="stat"><small>Radarer med tilstedeværelse</small><strong>${this._connected?present.toString().padStart(2,'0'):'—'}</strong><em>Dette er ikke et persontal</em></div><div class="stat"><small>Aktive faldsignaler</small><strong>${this._connected?activeFalls.length.toString().padStart(2,'0'):'—'}</strong><em>Kun tilgængelige signaler</em></div><div class="stat"><small>Datakilde</small><strong style="font-size:17px;margin-top:13px">Home Assistant</strong><em>Ingen ekstra datasky</em></div></div><div class="section-head"><h2>Rum & sensorer</h2><span>${devices.length} enheder</span></div><div class="devices">${devices.map(d=>this._device(d)).join('')}</div>${this._historyPanel()}`}<footer class="bottom"><span>Sensorestimater · Ikke medicinsk udstyr eller et alarmsystem</span><span>Historik opdateres med knappen Opdatér</span></footer></main></div></ha-card>`;
   }
 }
-export class ESP32HealthEditor extends HTMLElement {
-  constructor() {
-    super(); this._card=new ESP32HealthCard(); this._card._editorMode=true; this.attachShadow({mode:'open'}).append(this._card);
-    this._card.addEventListener('esp32health-config-changed',e=>{
-      e.stopPropagation(); this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:e.detail.config},bubbles:true,composed:true}));
-    });
-  }
-  setConfig(config) { this._card.setConfig(config); }
-  set hass(hass) { this._card.hass=hass; }
-}
-if(!customElements.get('esp32health-card'))customElements.define('esp32health-card',ESP32HealthCard);
-if(!customElements.get('esp32health-editor'))customElements.define('esp32health-editor',ESP32HealthEditor);
-if (typeof window !== 'undefined') {
-  window.customCards=window.customCards || [];
-  if(!window.customCards.some(c=>c.type==='esp32health-card'))window.customCards.push({type:'esp32health-card',name:'ESP32Health',description:'MR60BHA2 puls og vejrtrækning · MR60FDA2 faldregistrering',preview:false});
-}
+customElements.define('esp32health-dashboard',ESP32HealthDashboard);

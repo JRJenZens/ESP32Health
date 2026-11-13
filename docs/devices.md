@@ -1,6 +1,6 @@
 # Device scope and sources
 
-The program assumes both kits already run ESPHome and are added to Home Assistant. It does not communicate with the radar UART or change device firmware.
+The Home Assistant app assumes both kits already run ESPHome and are added to Home Assistant. It does not communicate with the radar UART or change device firmware.
 
 | Model | ESPHome component | Data used |
 | --- | --- | --- |

@@ -1,12 +1,11 @@
 {
   "name": "esp32health",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Local-first dashboard for Seeed MR60FDA2 and MR60BHA2 via ESPHome and Home Assistant",
+  "description": "Home Assistant app for Seeed MR60FDA2 and MR60BHA2 via ESPHome",
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "start": "python3 -m http.server 8320 --bind 127.0.0.1"
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=20"

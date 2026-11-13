@@ -1,9 +1,9 @@
 # Contributing
 
-Issues and pull requests are welcome. Keep changes focused and run `npm test` with Node.js 20+.
+The active distribution is a Home Assistant app. Runtime code and its Docker build context live in `esp32health/`. Keep the UI in Danish, the warm burgundy/rose style and all frontend URLs relative for Ingress. The older 0.1 standalone/card distributions are historical tags and should not be reintroduced.
 
-Use synthetic fixtures. Do not upload Home Assistant tokens, Wi-Fi passwords, ESPHome encryption keys, real health records, real household device exports or unredacted diagnostic screenshots.
+Run the Python tests with Python 3.13 and `esp32health/requirements.txt`, and run `npm test` with Node.js 20+. Use synthetic data only. `tests/preview.py` provides a synthetic browser fixture under an Ingress-like prefix and is not included in the app container.
 
-For compatibility reports, provide the radar model, ESPHome version, Home Assistant version, browser and a minimal configuration using invented entity IDs. State whether the issue occurs in the standalone app, custom card or both.
+Do not add generic HA command proxies, send service actions or expose Supervisor tokens to the frontend. Configuration must remain in the app's private data directory. Include focused tests for meaningful behavior changes and update the app version/changelog for releases.
 
-The interface is currently Danish. Documentation and code comments are primarily English for public contributors. The card must remain usable as a single self-contained module without external CDNs.
+For issues provide the sensor model, ESPHome version, Home Assistant version and a minimal redacted example. Never upload real health records, Wi-Fi passwords, API keys or private household exports.
