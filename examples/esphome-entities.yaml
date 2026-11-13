@@ -1,0 +1,42 @@
+# ENTITY FRAGMENTS, NOT A COMPLETE FIRMWARE CONFIGURATION.
+# Merge the relevant fragment into each existing ESPHome device configuration.
+# Do not add both fragments to one device. Keep existing UART, board, API,
+# Wi-Fi and OTA settings. No flashing is needed if these entities already exist.
+# Native components: https://esphome.io/components/seeed_mr60bha2/
+#                    https://esphome.io/components/seeed_mr60fda2/
+# force_update makes repeated sensor values visible to HA, but increases
+# Recorder writes and cannot prove that a radar estimate is actually fresh.
+
+# MR60BHA2 device:
+seeed_mr60bha2:
+
+binary_sensor:
+  - platform: seeed_mr60bha2
+    has_target:
+      name: Presence
+
+sensor:
+  - platform: seeed_mr60bha2
+    heart_rate:
+      name: Heart rate
+      force_update: true
+    breath_rate:
+      name: Breath rate
+      force_update: true
+    distance:
+      name: Distance
+      force_update: true
+    num_targets:
+      name: Target number
+      force_update: true
+
+---
+# MR60FDA2 device (separate file/device):
+seeed_mr60fda2:
+
+binary_sensor:
+  - platform: seeed_mr60fda2
+    people_exist:
+      name: Presence
+    fall_detected:
+      name: Fall detected

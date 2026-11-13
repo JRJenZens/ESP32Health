@@ -1,0 +1,24 @@
+# Example entity IDs only. Replace every mapping with your actual HA entities.
+type: custom:esp32health-card
+title: Dit hjem, i overblik
+stale_after: 180
+devices:
+  - id: bedroom-bha2
+    name: Soveværelset
+    area: 1. sal
+    model: MR60BHA2
+    entities:
+      presence: binary_sensor.bedroom_has_target
+      heart_rate: sensor.bedroom_heart_rate
+      breath_rate: sensor.bedroom_breath_rate
+      distance: sensor.bedroom_distance
+      num_targets: sensor.bedroom_num_targets
+      illuminance: sensor.bedroom_illuminance
+  - id: livingroom-fda2
+    name: Opholdsrummet
+    area: Stueetagen
+    model: MR60FDA2
+    entities:
+      presence: binary_sensor.livingroom_people_exist
+      fall: binary_sensor.livingroom_fall_detected
+      illuminance: sensor.livingroom_illuminance
