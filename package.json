@@ -1,6 +1,6 @@
 {
   "name": "esp32health",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Home Assistant app for Seeed MR60FDA2 and MR60BHA2 via ESPHome",

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 — 2026-11-14
+
+- Vælg en fysisk ESPHome-enhed manuelt fra Home Assistants enhedsregister.
+- Vælg radarmodel og gennemgå sensorforslag fra samme fysiske enhed.
+- Genkend også radarer med generisk ESP32-modelnavn og danske sensornavne.
+- Bevar eksisterende koblinger og undgå at tilføje samme radar flere gange.
+- Kortere sensorlister og stabil opsætning under liveopdateringer.
+- Vent med historik, indtil de nye sensorkoblinger er gemt.
+
+
 ## 0.2.0 — 2026-11-14
 
 - Replace the standalone web app and HACS dashboard card with a Home Assistant app installed from the Apps store.

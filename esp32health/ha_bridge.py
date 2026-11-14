@@ -34,7 +34,7 @@ def sensor_state(value):
 def registry_rows(kind, values):
     keys = {
         'device': ('id', 'name', 'name_by_user', 'model', 'manufacturer', 'area_id'),
-        'entity': ('entity_id', 'device_id', 'name', 'original_name', 'translation_key', 'disabled_by'),
+        'entity': ('entity_id', 'device_id', 'name', 'original_name', 'translation_key', 'disabled_by', 'platform'),
         'area': ('area_id', 'name'),
     }[kind]
     return [{k: row[k] for k in keys if k in row} for row in values

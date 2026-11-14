@@ -13,7 +13,7 @@
 1. Åbn linket ovenfor og tilføj repository. Alternativt: **Indstillinger → Apps → App-butik → ⋮ → Repositories**, og tilføj `https://github.com/JRJenZens/ESP32Health`.
 2. Find **ESP32Health**, og vælg **Installér**. Første installation bygger appen og kan tage nogle minutter.
 3. Vælg **Start** og derefter **Åbn web-UI**. Aktivér eventuelt **Vis i sidepanel**.
-4. Gå til **Enheder** i ESP32Health, og vælg **Find Seeed-enheder**, eller tilføj modellerne manuelt.
+4. Gå til **Enheder** i ESP32Health, og vælg **Find Seeed-enheder**, eller vælg **Vælg ESPHome-enhed** for at forbinde en fysisk enhed manuelt.
 5. Kontrollér entiteterne. Opsætningen gemmes automatisk i appen og bruges på tværs af dine enheder.
 
 Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne skal allerede være tilføjet til Home Assistant via ESPHome. Der skal ikke indtastes URL, adgangstoken eller opsættes et dashboardkort. Den aktuelle app retter sig mod HA-administratorer.
@@ -23,6 +23,7 @@ Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne 
 - **MR60BHA2:** radar-estimeret puls og vejrtrækning, tilstedeværelse, afstand, estimeret antal personer og eventuelt lysniveau.
 - **MR60FDA2:** tilstedeværelse, aktuelt faldsignal og eventuelt lysniveau.
 - Flere radarer med separate navne, områder og entitetskoblinger.
+- Manuel liste over ESPHome-enheder og radarmodelvalg. Sensorvalg afgrænses til den valgte fysiske enhed; generiske ESP32-modelnavne og danske sensornavne understøttes.
 - Liveopdateringer, automatisk genforbindelse og tydelig ukendt status ved manglende data.
 - Recorder-historik for 1, 6, 12 eller 24 timer samt CSV-eksport.
 - Bordeaux og rosa design, som tilpasser sig computer, iPhone og iPad.

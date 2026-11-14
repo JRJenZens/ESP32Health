@@ -44,8 +44,8 @@ class FakeBridge:
         self.on_change = lambda: None
         self.commands = []
         self.registries = {
-            'device': [{'id': d['id'], 'model': d['model'], 'name': d['name']} for d in CONFIG['devices']],
-            'entity': [{'entity_id': entity_id, 'device_id': d['id'], 'original_name': role}
+            'device': [{'id': d['id'], 'model': 'esp32-c6', 'name': d['name']} for d in CONFIG['devices']],
+            'entity': [{'entity_id': entity_id, 'device_id': d['id'], 'original_name': role, 'platform': 'esphome'}
                        for d in CONFIG['devices'] for role, entity_id in d['entities'].items()],
             'area': [],
         }
@@ -125,7 +125,7 @@ class StorageTests(unittest.TestCase):
         value = {'entity_id': 'sensor.test', 'state': '1', 'attributes': {'friendly_name': 'Sensor', 'secret': 'private'}}
         self.assertNotIn('secret', sensor_state(value)['attributes'])
         self.assertIsNone(sensor_state({'entity_id': 'lock.front', 'state': 'locked'}))
-        self.assertEqual(registry_rows('entity', [{'entity_id': 'lock.front'}, {'entity_id': 'sensor.test', 'secret': 'private'}]), [{'entity_id': 'sensor.test'}])
+        self.assertEqual(registry_rows('entity', [{'entity_id': 'lock.front'}, {'entity_id': 'sensor.test', 'secret': 'private', 'platform': 'esphome'}]), [{'entity_id': 'sensor.test', 'platform': 'esphome'}])
 
 
 class AppTests(unittest.IsolatedAsyncioTestCase):

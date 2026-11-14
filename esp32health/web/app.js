@@ -7,6 +7,7 @@ let revision=0;
 let latest={connected:false,states:{}};
 let saveQueue=Promise.resolve();
 let generation=0;
+let pendingSaves=0;
 const showError=message=>{errorBox.textContent=message;errorBox.hidden=!message;};
 async function api(path,options={}) {
   const response=await fetch(path,{...options,credentials:'same-origin',headers:{'X-ESP32Health':'1',...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
@@ -19,22 +20,24 @@ async function callWS(command) {
   if(command.type==='history/history_during_period')return api('api/history',{method:'POST',body:JSON.stringify(command)});
   throw new Error('Denne læseforespørgsel understøttes ikke.');
 }
-function updateHass(){dashboard.hass={...latest,callWS};}
+function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS};}
 async function loadConfig(){const document=await api('api/config');revision=document.revision;dashboard.setConfig(document.config);updateHass();}
 dashboard.addEventListener('esp32health-config-changed',event=>{
   const config=structuredClone(event.detail.config);
   const currentGeneration=generation;
+  pendingSaves++;
   saveStatus.textContent='Gemmer opsætning…';
+  updateHass();
   saveQueue=saveQueue.then(async()=>{
-    if(currentGeneration!==generation)return;
+    if(currentGeneration!==generation){pendingSaves--;updateHass();return;}
     try{
       const result=await api('api/config',{method:'PUT',body:JSON.stringify({revision,config})});
-      revision=result.revision;saveStatus.textContent='Opsætning gemt';showError('');updateHass();
+      revision=result.revision;saveStatus.textContent=pendingSaves>1?'Gemmer opsætning…':'Opsætning gemt';showError('');
     }catch(error){
       generation++;
       saveStatus.textContent='Ændringen blev ikke gemt';showError(error.message);
       try{await loadConfig();}catch(_){/* Retain the error and never claim that an unsaved edit was stored. */}
-    }
+    } finally {pendingSaves=Math.max(0,pendingSaves-1);updateHass();}
   });
 });
 try {

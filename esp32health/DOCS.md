@@ -14,7 +14,9 @@ Appen kobler sig automatisk til den Home Assistant, den er installeret i. Du ska
 
 Åbn **Enheder → Find Seeed-enheder**. Appen foreslår MR60BHA2/MR60FDA2-enheder, der kan genkendes i Home Assistants enhedsregister. Kontrollér forslagene og de valgte entiteter.
 
-Hvis modellen ikke genkendes, vælg **+ MR60BHA2** eller **+ MR60FDA2** og vælg entiteterne manuelt. Brug separate enheder til hver fysisk radar. Nummeret af radarer med tilstedeværelse er ikke et persontal.
+Hvis radaren ikke findes automatisk, vælg **Vælg ESPHome-enhed**. Vælg den fysiske enhed i listen, kontrollér radarmodellen, og tryk **Tilføj / forbind enhed**. Listen viser ESPHome-enheder, som er tilføjet til Home Assistant; enheder, der kun findes i ESPHome Builder, skal først tilføjes gennem integrationen ESPHome.
+
+Appen foreslår sensorkoblinger fra netop den valgte enhed. Den genbruger en allerede tilføjet radar, så samme fysiske enhed ikke bliver tilføjet to gange. Du kan også bruge **+ MR60BHA2** eller **+ MR60FDA2** og vælge entiteterne helt manuelt. Brug separate enheder til hver fysisk radar. Nummeret af radarer med tilstedeværelse er ikke et persontal.
 
 Opsætningen gemmes automatisk. Vent på **Opsætning gemt** øverst, før du lukker appen. Den samme opsætning bruges fra computer, mobil og tablet og overlever en genstart af appen.
 

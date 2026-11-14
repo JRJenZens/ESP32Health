@@ -1,3 +1,12 @@
+# 0.2.1
+
+- Vælg en fysisk ESPHome-enhed manuelt fra Home Assistants enhedsregister.
+- Vælg radarmodel og gennemgå sensorforslag fra samme fysiske enhed.
+- Genkend også radarer med generisk ESP32-modelnavn og danske sensornavne.
+- Bevar eksisterende koblinger og undgå at tilføje samme radar flere gange.
+- Kortere sensorlister og stabil opsætning under liveopdateringer.
+- Vent med historik, indtil de nye sensorkoblinger er gemt.
+
 # 0.2.0
 
 - ESP32Health er nu en Home Assistant-app, som installeres under Apps ligesom ESPScripts.

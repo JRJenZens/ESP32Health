@@ -1,5 +1,5 @@
-/* ESP32Health v0.2.0 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.2.0';
+/* ESP32Health v0.2.1 | MIT | https://github.com/JRJenZens/ESP32Health */
+export const VERSION = '0.2.1';
 export const ROLES = {
   MR60BHA2: { presence: 'Tilstedeværelse', heart_rate: 'Puls', breath_rate: 'Vejrtrækning', distance: 'Afstand', num_targets: 'Antal personer (estimat)', illuminance: 'Lysniveau' },
   MR60FDA2: { presence: 'Tilstedeværelse', fall: 'Fald registreret', illuminance: 'Lysniveau' },
@@ -59,23 +59,55 @@ const rolePatterns = {
   heart_rate: /heart.?rate|heartbeat|puls/i,
   breath_rate: /breath.?rate|respiratory|respiration|vejrtr/i,
   distance: /distance|afstand/i,
-  num_targets: /num.?targets|target.?number|target.?count|antal personer/i,
-  fall: /fall|fald|falling/i,
-  illuminance: /illuminance|illumin|lux|lysni/i,
+  num_targets: /num.?targets|target.?number|target.?count|antal.?personer|personantal/i,
+  fall: /fall|fald/i,
+  illuminance: /illuminance|illumin|lux|lysni|belysning/i,
 };
-export function discoverDevices(devices, entities, areas = [], states = {}) {
-  return devices.flatMap(d => {
-    const model = `${d.model || ''} ${d.name || ''} ${d.name_by_user || ''}`.match(/MR60(?:FDA2|BHA2)/i)?.[0]?.toUpperCase();
-    if (!model) return [];
-    const mapped = {};
-    for (const [role] of Object.entries(ROLES[model])) {
-      const domain = ['presence', 'fall'].includes(role) ? 'binary_sensor.' : 'sensor.';
-      const candidates = entities.filter(e => e.device_id === d.id && !e.disabled_by && e.entity_id.startsWith(domain) && rolePatterns[role].test(`${e.entity_id} ${e.original_name || ''} ${e.name || ''} ${e.translation_key || ''} ${states[e.entity_id]?.attributes?.friendly_name || ''}`));
-      // Ambiguous names are deliberately left for the user to choose.
-      if (candidates.length === 1) mapped[role] = candidates[0].entity_id;
-    }
-    return [{ id: d.id, model, name: d.name_by_user || d.name || model, area: areas.find(a => a.area_id === d.area_id)?.name || '', entities: mapped }];
-  });
+function roleMatches(entry, role, states) {
+  if (entry.disabled_by || !entry.entity_id?.startsWith(['presence','fall'].includes(role)?'binary_sensor.':'sensor.')) return false;
+  const label=`${entry.entity_id} ${entry.original_name || ''} ${entry.name || ''} ${entry.translation_key || ''} ${states[entry.entity_id]?.attributes?.friendly_name || ''}`;
+  return rolePatterns[role].test(label) || (role==='illuminance' && states[entry.entity_id]?.attributes?.unit_of_measurement==='lx');
+}
+export function mapDevice(device, model, entities, areas=[], states={}) {
+  const mapped={};
+  for(const role of Object.keys(ROLES[model])) {
+    const candidates=entities.filter(e=>e.device_id===device.id && roleMatches(e,role,states));
+    // Leave ambiguous names for review instead of choosing arbitrarily.
+    if(candidates.length===1)mapped[role]=candidates[0].entity_id;
+  }
+  return {id:device.id,model,name:device.name_by_user || device.name || model,area:areas.find(a=>a.area_id===device.area_id)?.name || '',entities:mapped};
+}
+export function inferModel(device, entities, states={}) {
+  const explicit=`${device.model || ''} ${device.name || ''} ${device.name_by_user || ''}`.match(/MR60(?:FDA2|BHA2)/i)?.[0]?.toUpperCase();
+  if(explicit)return explicit;
+  const own=entities.filter(e=>e.device_id===device.id && e.platform==='esphome');
+  if(!own.length)return '';
+  const bha=mapDevice(device,'MR60BHA2',own,[],states).entities;
+  const fda=mapDevice(device,'MR60FDA2',own,[],states).entities;
+  const hasBHA=Boolean(bha.heart_rate && bha.breath_rate && (bha.presence || bha.distance));
+  const hasFDA=Boolean(fda.fall && fda.presence);
+  return hasBHA===hasFDA?'':hasBHA?'MR60BHA2':'MR60FDA2';
+}
+export function espHomeDevices(devices, entities, areas=[], states={}) {
+  const ids=new Set(entities.filter(e=>e.platform==='esphome').map(e=>e.device_id));
+  return devices.filter(d=>ids.has(d.id)).map(d=>({...d,display_name:d.name_by_user || d.name || d.id,area:areas.find(a=>a.area_id===d.area_id)?.name || '',inferred_model:inferModel(d,entities,states)})).sort((a,b)=>a.display_name.localeCompare(b.display_name,'da'));
+}
+export function discoverDevices(devices, entities, areas=[], states={}) {
+  return devices.flatMap(d=>{const model=inferModel(d,entities,states);return model?[mapDevice(d,model,entities,areas,states)]:[];});
+}
+export function mergeDevice(config, suggested, entities) {
+  const sourceIds=new Set(entities.filter(e=>e.device_id===suggested.id).map(e=>e.entity_id));
+  let index=config.devices.findIndex(d=>d.id===suggested.id || Object.values(d.entities).some(id=>id && sourceIds.has(id)));
+  if(index<0)index=config.devices.findIndex(d=>d.model===suggested.model && !Object.values(d.entities).some(Boolean));
+  const devices=config.devices.slice();
+  if(index<0)devices.push(suggested);
+  else {
+    const old=devices[index];
+    const mapped={...suggested.entities};
+    if(old.model===suggested.model)for(const [role,id]of Object.entries(old.entities))if(id)mapped[role]=id;
+    devices[index]={...suggested,id:old.id,name:Object.values(old.entities).some(Boolean)?old.name:suggested.name,area:old.area || suggested.area,entities:mapped};
+  }
+  return {...config,devices};
 }
 export function normalizeHistory(result) {
   const output = {};
@@ -101,7 +133,7 @@ const icons = {
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.radar}</svg>`;
 const css = `
-:host{display:block;container-type:inline-size;color:#493238;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--green:#9d495d;--muted:#927b80;--line:#eee2e5;--bg:#fcf7f7;--ink:#4c3039}*{box-sizing:border-box}button,select,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.5}button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #cc98a8;outline-offset:3px}button svg{width:18px;height:18px}svg{width:24px;height:24px;flex-shrink:0}ha-card{display:block;overflow:hidden;background:var(--bg);border:1px solid var(--line);border-radius:20px;color:var(--ink)}.shell{display:grid;grid-template-columns:208px 1fr;min-height:740px}.side{padding:30px 20px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px}.brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:750;letter-spacing:-.8px;margin-bottom:35px}.brand svg{color:var(--green);width:30px;height:30px}.brand span span{font-weight:400}.caption{font-size:10px;letter-spacing:1.7px;color:var(--muted);font-weight:650;text-transform:uppercase}.nav{display:flex;align-items:center;gap:12px;border:0;background:none;text-align:left;border-radius:10px;color:#927b80;padding:12px;margin:3px 0}.nav.active{color:#97485b;background:#f8e9ed;font-weight:650}.side-foot{margin-top:auto;padding-top:48px;color:var(--muted);font-size:11px}.side-foot strong{display:block;color:#65464f;margin-bottom:6px}.body{padding:28px 34px 24px;min-width:0}.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:34px}.breadcrumb{font-size:12px;color:var(--muted)}.breadcrumb b{color:#62414b;font-weight:500}.pill{border:1px solid #ead8df;border-radius:30px;background:#fff;font-size:11px;padding:6px 11px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.dot{height:6px;width:6px;border-radius:100%;background:#4b9d7c;display:inline-block}.muted .dot{background:#aa959b}.warn .dot{background:#bb8a34}.bad .dot{background:#b94444}h1{font-size:29px;letter-spacing:-1px;font-weight:600;line-height:1.2;margin:7px 0 10px}h2{font-size:16px;font-weight:650;letter-spacing:-.3px;margin:0}h3{font-size:13px;margin:0;font-weight:650}p{margin:6px 0}.sub{color:var(--muted);font-size:13px}.heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:25px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #eadbdf;border-radius:8px;padding:8px 12px;background:#fff;color:#744b59;font-size:12px;text-decoration:none}.btn.primary{background:#a14e63;border-color:#a14e63;color:#fff}.demo{background:#fff4df;color:#80601d;border:1px solid #ebd7ab;padding:10px 14px;border-radius:10px;font-size:12px;margin-bottom:22px}.alert{padding:14px 17px;border-radius:12px;margin-bottom:18px;border:1px solid #e6b5b5;background:#fff1ef;color:#933d35;display:flex;gap:12px;align-items:center}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0 27px}.stat{padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:12px}.stat small{color:var(--muted);font-size:11px}.stat strong{font-size:23px;font-weight:600;display:block;letter-spacing:-.5px;margin:6px 0 2px}.stat em{font-style:normal;font-size:11px;color:var(--muted)}.section-head{display:flex;justify-content:space-between;align-items:center;margin:6px 0 14px}.section-head span{font-size:11px;color:var(--muted)}.devices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.device{background:#fff;border:1px solid var(--line);border-radius:15px;overflow:hidden}.device-header{display:flex;align-items:center;gap:10px;padding:19px 20px 15px}.device-icon{height:40px;width:40px;border-radius:11px;background:#faedf0;display:grid;place-items:center;color:#a76276}.device-header .text{flex:1;min-width:0}.device-header h2{font-size:14px}.model{font-size:10px;color:var(--muted);margin-top:2px}.sensor-body{padding:0 20px 18px}.measurements{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px 0}.metric-label{display:flex;align-items:center;gap:6px;font-size:11px;color:#977b85}.metric-label svg{height:16px;width:16px}.number{font-size:39px;font-weight:500;letter-spacing:-1.5px;line-height:1.4}.number span{font-size:11px;color:var(--muted);letter-spacing:0;margin-left:5px;font-weight:400}.hint{font-size:10px;color:var(--muted)}.status{padding:8px 10px;border-radius:7px;background:#eef5f0;color:#3a7356;font-size:10px;display:flex;gap:7px;align-items:center}.status.warn{background:#faf4e8;color:#8b6b2d}.status.muted{background:#f0f2f0;color:#748078}.status.bad{background:#fff0ed;color:#a1483d}.detail-row{display:flex;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:13px;margin-top:14px;color:#a08b92;font-size:11px}.detail-row b{display:block;font-size:12px;font-weight:550;color:#72505b;margin-top:3px}.fall-visual{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:19px 0 17px;min-height:133px}.fall-visual .ring{width:56px;height:56px;border:1px solid #e3cdd5;box-shadow:0 0 0 9px #fcf4f6;border-radius:50%;display:grid;place-items:center;color:#5b8f6e;margin:0 0 16px}.fall-visual.bad .ring{color:#ad433c;background:#fff0ed;box-shadow:0 0 0 9px #fff6f4;border-color:#f1cbc5}.fall-visual strong{font-size:15px;font-weight:550}.panel{margin-top:22px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}.chart-head{display:flex;justify-content:space-between;gap:15px;align-items:center}.chart-head p{font-size:11px;color:var(--muted)}select,input{background:#fff;border:1px solid #eadbdf;border-radius:7px;color:#744b59;padding:8px;max-width:100%;min-width:0}.chart{margin-top:15px}.chart svg{width:100%;height:160px;overflow:visible}.legend{display:flex;gap:16px;font-size:10px;color:#977b85;flex-wrap:wrap}.legend span::before{content:'';display:inline-block;width:7px;height:7px;background:#ad586d;border-radius:50%;margin-right:5px}.legend span:last-child::before{background:#c49381}.chart-empty{text-align:center;padding:30px;color:var(--muted);font-size:12px;border:1px dashed var(--line);border-radius:8px;margin-top:15px}.bottom{display:flex;justify-content:space-between;gap:15px;color:#a48e97;font-size:10px;padding-top:20px}.note{font-size:11px;color:#927b80;line-height:1.6}.badge{font-size:10px;background:#faeef2;color:#977580;border-radius:5px;padding:3px 6px}.empty{text-align:center;padding:50px 20px}.empty svg{width:42px;height:42px;color:var(--green)}.empty h2{margin:15px 0 8px}.empty .btn{margin-top:15px}.device-list{display:grid;gap:14px}.settings-device{border:1px solid var(--line);padding:16px;border-radius:12px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#947581}.field select,.field input{width:100%;font-size:12px}.settings-device .toolbar{justify-content:space-between;margin-bottom:16px}.error{padding:11px;background:#fff0ed;border-radius:7px;color:#a1483d;font-size:12px;margin:12px 0}.history-row{display:grid;grid-template-columns:100px 1fr auto;gap:12px;border-top:1px solid var(--line);padding:12px 0;font-size:12px}.history-row time{color:var(--muted)}.pending{padding:30px;text-align:center;color:var(--muted)}.wrap-name{overflow-wrap:anywhere}
+:host{display:block;container-type:inline-size;color:#493238;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--green:#9d495d;--muted:#927b80;--line:#eee2e5;--bg:#fcf7f7;--ink:#4c3039}*{box-sizing:border-box}button,select,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.5}button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #cc98a8;outline-offset:3px}button svg{width:18px;height:18px}svg{width:24px;height:24px;flex-shrink:0}ha-card{display:block;overflow:hidden;background:var(--bg);border:1px solid var(--line);border-radius:20px;color:var(--ink)}.shell{display:grid;grid-template-columns:208px 1fr;min-height:740px}.side{padding:30px 20px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px}.brand{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:750;letter-spacing:-.8px;margin-bottom:35px}.brand svg{color:var(--green);width:30px;height:30px}.brand span span{font-weight:400}.caption{font-size:10px;letter-spacing:1.7px;color:var(--muted);font-weight:650;text-transform:uppercase}.nav{display:flex;align-items:center;gap:12px;border:0;background:none;text-align:left;border-radius:10px;color:#927b80;padding:12px;margin:3px 0}.nav.active{color:#97485b;background:#f8e9ed;font-weight:650}.side-foot{margin-top:auto;padding-top:48px;color:var(--muted);font-size:11px}.side-foot strong{display:block;color:#65464f;margin-bottom:6px}.body{padding:28px 34px 24px;min-width:0}.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:34px}.breadcrumb{font-size:12px;color:var(--muted)}.breadcrumb b{color:#62414b;font-weight:500}.pill{border:1px solid #ead8df;border-radius:30px;background:#fff;font-size:11px;padding:6px 11px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.dot{height:6px;width:6px;border-radius:100%;background:#4b9d7c;display:inline-block}.muted .dot{background:#aa959b}.warn .dot{background:#bb8a34}.bad .dot{background:#b94444}h1{font-size:29px;letter-spacing:-1px;font-weight:600;line-height:1.2;margin:7px 0 10px}h2{font-size:16px;font-weight:650;letter-spacing:-.3px;margin:0}h3{font-size:13px;margin:0;font-weight:650}p{margin:6px 0}.sub{color:var(--muted);font-size:13px}.heading{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:25px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #eadbdf;border-radius:8px;padding:8px 12px;background:#fff;color:#744b59;font-size:12px;text-decoration:none}.btn.primary{background:#a14e63;border-color:#a14e63;color:#fff}.demo{background:#fff4df;color:#80601d;border:1px solid #ebd7ab;padding:10px 14px;border-radius:10px;font-size:12px;margin-bottom:22px}.alert{padding:14px 17px;border-radius:12px;margin-bottom:18px;border:1px solid #e6b5b5;background:#fff1ef;color:#933d35;display:flex;gap:12px;align-items:center}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0 27px}.stat{padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:12px}.stat small{color:var(--muted);font-size:11px}.stat strong{font-size:23px;font-weight:600;display:block;letter-spacing:-.5px;margin:6px 0 2px}.stat em{font-style:normal;font-size:11px;color:var(--muted)}.section-head{display:flex;justify-content:space-between;align-items:center;margin:6px 0 14px}.section-head span{font-size:11px;color:var(--muted)}.devices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.device{background:#fff;border:1px solid var(--line);border-radius:15px;overflow:hidden}.device-header{display:flex;align-items:center;gap:10px;padding:19px 20px 15px}.device-icon{height:40px;width:40px;border-radius:11px;background:#faedf0;display:grid;place-items:center;color:#a76276}.device-header .text{flex:1;min-width:0}.device-header h2{font-size:14px}.model{font-size:10px;color:var(--muted);margin-top:2px}.sensor-body{padding:0 20px 18px}.measurements{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px 0}.metric-label{display:flex;align-items:center;gap:6px;font-size:11px;color:#977b85}.metric-label svg{height:16px;width:16px}.number{font-size:39px;font-weight:500;letter-spacing:-1.5px;line-height:1.4}.number span{font-size:11px;color:var(--muted);letter-spacing:0;margin-left:5px;font-weight:400}.hint{font-size:10px;color:var(--muted)}.status{padding:8px 10px;border-radius:7px;background:#eef5f0;color:#3a7356;font-size:10px;display:flex;gap:7px;align-items:center}.status.warn{background:#faf4e8;color:#8b6b2d}.status.muted{background:#f0f2f0;color:#748078}.status.bad{background:#fff0ed;color:#a1483d}.detail-row{display:flex;gap:12px;justify-content:space-between;border-top:1px solid var(--line);padding-top:13px;margin-top:14px;color:#a08b92;font-size:11px}.detail-row b{display:block;font-size:12px;font-weight:550;color:#72505b;margin-top:3px}.fall-visual{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:19px 0 17px;min-height:133px}.fall-visual .ring{width:56px;height:56px;border:1px solid #e3cdd5;box-shadow:0 0 0 9px #fcf4f6;border-radius:50%;display:grid;place-items:center;color:#5b8f6e;margin:0 0 16px}.fall-visual.bad .ring{color:#ad433c;background:#fff0ed;box-shadow:0 0 0 9px #fff6f4;border-color:#f1cbc5}.fall-visual strong{font-size:15px;font-weight:550}.panel{margin-top:22px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}.chart-head{display:flex;justify-content:space-between;gap:15px;align-items:center}.chart-head p{font-size:11px;color:var(--muted)}select,input{background:#fff;border:1px solid #eadbdf;border-radius:7px;color:#744b59;padding:8px;max-width:100%;min-width:0}.chart{margin-top:15px}.chart svg{width:100%;height:160px;overflow:visible}.legend{display:flex;gap:16px;font-size:10px;color:#977b85;flex-wrap:wrap}.legend span::before{content:'';display:inline-block;width:7px;height:7px;background:#ad586d;border-radius:50%;margin-right:5px}.legend span:last-child::before{background:#c49381}.chart-empty{text-align:center;padding:30px;color:var(--muted);font-size:12px;border:1px dashed var(--line);border-radius:8px;margin-top:15px}.bottom{display:flex;justify-content:space-between;gap:15px;color:#a48e97;font-size:10px;padding-top:20px}.note{font-size:11px;color:#927b80;line-height:1.6}.badge{font-size:10px;background:#faeef2;color:#977580;border-radius:5px;padding:3px 6px}.empty{text-align:center;padding:50px 20px}.empty svg{width:42px;height:42px;color:var(--green)}.empty h2{margin:15px 0 8px}.empty .btn{margin-top:15px}.device-list{display:grid;gap:14px}.settings-device,.picker-panel{border:1px solid var(--line);padding:16px;border-radius:12px}.picker-panel{margin-bottom:18px;background:#fff}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#947581}.field select,.field input{width:100%;font-size:12px}.settings-device .toolbar{justify-content:space-between;margin-bottom:16px}.error{padding:11px;background:#fff0ed;border-radius:7px;color:#a1483d;font-size:12px;margin:12px 0}.history-row{display:grid;grid-template-columns:100px 1fr auto;gap:12px;border-top:1px solid var(--line);padding:12px 0;font-size:12px}.history-row time{color:var(--muted)}.pending{padding:30px;text-align:center;color:var(--muted)}.wrap-name{overflow-wrap:anywhere}
 @media(min-width:1250px){.body{padding:32px 44px}.number{font-size:43px}.sensor-body{padding:0 24px 22px}}
 @container(max-width:900px){.shell{grid-template-columns:1fr}.side{padding:14px 22px;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--line);gap:8px}.brand{margin:0 auto 0 0;font-size:16px}.brand svg{width:25px}.side .caption,.side-foot{display:none}.nav{padding:9px}.nav span{display:none}.body{padding:22px}.topbar{margin-bottom:24px}.shell{min-height:0}}
 @container(max-width:760px){.devices{grid-template-columns:1fr}.summary{grid-template-columns:repeat(2,1fr);gap:8px}.stat{padding:12px}.body{padding:18px 14px}.side{padding:13px 14px}.heading{align-items:start;flex-direction:column}h1{font-size:26px}.fields{grid-template-columns:1fr}.chart-head{align-items:start;flex-direction:column}.bottom{flex-direction:column}.device-header{padding:16px}.sensor-body{padding:0 16px 16px}.pill{font-size:10px}.history-row{grid-template-columns:70px 1fr auto}}
@@ -115,6 +147,8 @@ export class ESP32HealthDashboard extends HTMLElement {
     this._config = {devices:[]};
     this._tab = 'overview'; this._history = {}; this._hours = 6; this._historyState = 'idle';
     this._signature = ''; this._error = ''; this._historyRequest = 0;
+    this._registries={devices:[],entities:[],areas:[]}; this._registryLoaded=false; this._registryPromise=null;
+    this._pickerOpen=false; this._pickerDevice=''; this._pickerModel='';
     this.shadowRoot.addEventListener('click', e => this._click(e));
     this.shadowRoot.addEventListener('change', e => this._change(e));
   }
@@ -126,9 +160,9 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
-    const signature = JSON.stringify([this._connected, this._config.devices.map(d => Object.values(d.entities).map(id => hass.states?.[id]))]);
+    const signature = this._tab==='devices' ? JSON.stringify([this._connected,Object.entries(hass.states || {}).map(([id,s])=>[id,s.attributes?.friendly_name]),this._config.devices.map(d=>hass.states?.[d.entities.fall]?.state)]) : JSON.stringify([this._connected, this._config.devices.map(d => Object.values(d.entities).map(id => hass.states?.[id]))]);
     if (signature !== this._signature) { this._signature = signature; this.render(); }
-    if (this._historyState === 'idle' && this.isConnected && this._connected && this._config.devices.length) void this.loadHistory();
+    if (!hass.configSaving && this._historyState === 'idle' && this.isConnected && this._connected && this._config.devices.length) void this.loadHistory();
   }
   connectedCallback() {
     this._timer = setInterval(() => { if(this._tab!=='devices')this.render(); }, 15000);
@@ -139,7 +173,7 @@ export class ESP32HealthDashboard extends HTMLElement {
   get _connected() { return connectionOnline(this._hass); }
   async loadHistory() {
     const ids = [...new Set(this._config.devices.flatMap(d => Object.values(d.entities)).filter(Boolean))];
-    if (!this._connected || !ids.length || !this._hass.callWS) return;
+    if (!this._connected || this._hass.configSaving || !ids.length || !this._hass.callWS) return;
     const request = ++this._historyRequest;
     const start=Date.now()-this._hours*3600000,end=Date.now();
     this._historyState = 'loading'; this._historyError = ''; this.render();
@@ -154,21 +188,60 @@ export class ESP32HealthDashboard extends HTMLElement {
     }
     this.render();
   }
-  async _discover() {
-    this._error = ''; this._discovering = true; this.render();
-    try {
-      const [devices, entities, areas] = await Promise.all([
+  async _loadRegistries() {
+    if(this._registryPromise)return this._registryPromise;
+    this._registryPromise=(async()=>{
+      const [devices,entities,areas]=await Promise.all([
         this._hass.callWS({type:'config/device_registry/list'}),
         this._hass.callWS({type:'config/entity_registry/list'}),
         this._hass.callWS({type:'config/area_registry/list'}),
       ]);
-      const found = discoverDevices(devices, entities, areas, this._hass.states);
-      const existing = new Set(this._config.devices.map(d => d.id));
-      const added = found.filter(d => !existing.has(d.id));
-      if (!added.length) this._error = 'Ingen nye MR60FDA2/MR60BHA2-enheder fundet. Du kan tilføje enheden manuelt og vælge entiteterne.';
-      else this._commit({...this._config,devices:[...this._config.devices,...added]});
-    } catch (_) { this._error = 'Automatisk søgning kræver adgang til Home Assistants enhedsregister. Tilføj enheder manuelt, hvis din bruger ikke har adgang.'; }
-    this._discovering = false; this.render();
+      this._registries={devices,entities,areas};this._registryLoaded=true;
+    })();
+    try{await this._registryPromise;}finally{this._registryPromise=null;}
+  }
+  async _openPicker() {
+    this._pickerOpen=true;this._error='';this._discovering=true;this.render();
+    try{await this._loadRegistries();}
+    catch(_){this._error='Enhedslisten kunne ikke hentes. Kontrollér forbindelsen til Home Assistant.';}
+    this._discovering=false;this.render();
+  }
+  async _discover() {
+    this._error='';this._discovering=true;this.render();
+    try {
+      await this._loadRegistries();
+      const {devices,entities,areas}=this._registries;
+      const found=discoverDevices(devices,entities,areas,this._hass.states);
+      let config=this._config;
+      for(const device of found)config=mergeDevice(config,device,entities);
+      if(!found.length){this._pickerOpen=true;this._error='Ingen sikre radarmatch. Vælg en ESPHome-enhed og radarmodel nedenfor.';}
+      else if(JSON.stringify(config)!==JSON.stringify(this._config))this._commit(config);
+    }catch(_){this._error='Enhederne kunne ikke hentes fra Home Assistant. Kontrollér forbindelsen og prøv igen.';}
+    this._discovering=false;this.render();
+  }
+  _addPickedDevice() {
+    const {devices,entities,areas}=this._registries;
+    const device=devices.find(d=>d.id===this._pickerDevice);
+    if(!device || !Object.hasOwn(ROLES,this._pickerModel))return;
+    const mapped=mapDevice(device,this._pickerModel,entities,areas,this._hass.states);
+    this._commit(mergeDevice(this._config,mapped,entities));
+    this._pickerOpen=false;this._error='';this.render();
+  }
+  _entityOptions(device,role) {
+    const states=this._hass?.states || {};
+    const domain=['presence','fall'].includes(role)?'binary_sensor.':'sensor.';
+    const entries=this._registries.entities;
+    const knownIds=new Set(Object.values(device.entities).map(id=>entries.find(e=>e.entity_id===id)?.device_id).filter(Boolean));
+    const source=this._registries.devices.some(d=>d.id===device.id)?device.id:knownIds.size===1?[...knownIds][0]:null;
+    let ids=this._registryLoaded?entries.filter(e=>e.platform==='esphome' && !e.disabled_by && (!source || e.device_id===source) && e.entity_id.startsWith(domain)).map(e=>e.entity_id):Object.keys(states).filter(id=>id.startsWith(domain));
+    const current=device.entities[role];if(current&&!ids.includes(current))ids.push(current);
+    return [...new Set(ids)].sort();
+  }
+  _picker() {
+    if(!this._pickerOpen)return '';
+    const {devices,entities,areas}=this._registries;
+    const list=espHomeDevices(devices,entities,areas,this._hass?.states || {});
+    return `<section class="picker-panel"><h2>Vælg ESPHome-enhed</h2><p class="note">Vælg blandt de ESPHome-enheder, der er tilføjet i Home Assistant. Enheder, der kun findes i ESPHome Builder, skal først tilføjes til Home Assistant.</p><div class="fields"><label class="field">ESPHome-enhed<select data-picker-device="true"><option value="">Vælg en enhed</option>${list.map(d=>`<option value="${escapeHTML(d.id)}" ${d.id===this._pickerDevice?'selected':''}>${escapeHTML(d.display_name)}${d.model?' · '+escapeHTML(d.model):''}</option>`).join('')}</select></label><label class="field">Radarmodel<select data-picker-model="true"><option value="">Vælg radarmodel</option>${Object.keys(ROLES).map(model=>`<option value="${model}" ${model===this._pickerModel?'selected':''}>${model} · ${model==='MR60BHA2'?'Puls og vejrtrækning':'Faldregistrering'}</option>`).join('')}</select></label></div><p class="note">Sensorforslag kobles til den valgte fysiske enhed. Kontrollér dem efter tilføjelsen. Eksisterende koblinger bevares, og samme radar tilføjes ikke to gange.</p><div class="toolbar"><button class="btn primary" data-action="add-picked" ${!this._pickerDevice||!this._pickerModel||this._discovering?'disabled':''}>Tilføj / forbind enhed</button><button class="btn" data-action="close-picker">Luk</button><span class="note">${list.length} ESPHome-enheder</span></div>${!this._discovering&&!list.length?'<p class="note">Ingen ESPHome-enheder i registeret. Kontrollér integrationen ESPHome under Enheder og tjenester.</p>':''}</section>`;
   }
   _commit(config) {
     validateConfig(config);
@@ -179,7 +252,10 @@ export class ESP32HealthDashboard extends HTMLElement {
   _click(e) {
     const b = e.target.closest('[data-action]'); if (!b) return;
     const action = b.dataset.action;
-    if (action === 'tab') {this._tab = b.dataset.tab; this.render();}
+    if (action === 'tab') {this._tab = b.dataset.tab;this.render();if(this._tab==='devices'&&!this._registryLoaded&&this._connected)void this._loadRegistries().then(()=>this.render()).catch(()=>{});}
+    if (action === 'pick' && this._connected)void this._openPicker();
+    if (action === 'close-picker'){this._pickerOpen=false;this.render();}
+    if (action === 'add-picked')this._addPickedDevice();
     if (action === 'history') void this.loadHistory();
     if (action === 'discover' && this._connected) void this._discover();
     if (action === 'add') {
@@ -199,6 +275,8 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _change(e) {
     const el = e.target;
+    if(el.dataset.pickerDevice){this._pickerDevice=el.value;const d=this._registries.devices.find(x=>x.id===el.value);this._pickerModel=d?inferModel(d,this._registries.entities,this._hass?.states || {}):'';this.render();return;}
+    if(el.dataset.pickerModel){this._pickerModel=el.value;this.render();return;}
     if (el.dataset.chartDevice) {this._chartDevice=el.value;this.render();return;}
     if (el.dataset.hours) { this._hours=Number(el.value); void this.loadHistory(); return; }
     const id = el.dataset.device; const key = el.dataset.key; if (!id || !key) return;
@@ -245,7 +323,7 @@ export class ESP32HealthDashboard extends HTMLElement {
   _historyPanel() {
     const bha=this._config.devices.filter(d=>d.model==='MR60BHA2');
     if(!bha.some(d=>d.id===this._chartDevice))this._chartDevice=bha[0]?.id;
-    return `<section class="panel"><div class="chart-head"><div><h2>Puls & vejrtrækning</h2><p>Historik fra Home Assistant Recorder</p></div><div class="toolbar">${bha.length?`<select data-chart-device="true" aria-label="Enhed i grafen">${bha.map(d=>`<option value="${escapeHTML(d.id)}" ${d.id===this._chartDevice?'selected':''}>${escapeHTML(d.name)}</option>`).join('')}</select>`:''}<select data-hours="true" aria-label="Historikperiode">${[1,6,12,24].map(n=>`<option value="${n}" ${this._hours===n?'selected':''}>Seneste ${n===1?'time':n+' timer'}</option>`).join('')}</select><button class="btn" data-action="history" ${!this._connected||this._historyState==='loading'?'disabled':''}>Opdatér</button></div></div>${this._chart()}</section>`;
+    return `<section class="panel"><div class="chart-head"><div><h2>Puls & vejrtrækning</h2><p>Historik fra Home Assistant Recorder</p></div><div class="toolbar">${bha.length?`<select data-chart-device="true" aria-label="Enhed i grafen">${bha.map(d=>`<option value="${escapeHTML(d.id)}" ${d.id===this._chartDevice?'selected':''}>${escapeHTML(d.name)}</option>`).join('')}</select>`:''}<select data-hours="true" aria-label="Historikperiode">${[1,6,12,24].map(n=>`<option value="${n}" ${this._hours===n?'selected':''}>Seneste ${n===1?'time':n+' timer'}</option>`).join('')}</select><button class="btn" data-action="history" ${!this._connected||this._hass?.configSaving||this._historyState==='loading'?'disabled':''}>Opdatér</button></div></div>${this._chart()}</section>`;
   }
   _events() {
     const events = this._config.devices.filter(d=>d.entities.fall).flatMap(d=>(this._history[d.entities.fall] || []).filter(r=>r.state==='on').map(r=>({...r,name:d.name}))).sort((a,b)=>b.at-a.at);
@@ -253,10 +331,10 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _settings() {
     const states=this._hass?.states || {};
-    return `<div class="toolbar" style="margin-bottom:18px"><button class="btn primary" data-action="discover" ${!this._connected||this._discovering?'disabled':''}>${this._discovering?'Søger…':'Find Seeed-enheder'}</button><button class="btn" data-action="add" data-model="MR60BHA2">+ MR60BHA2</button><button class="btn" data-action="add" data-model="MR60FDA2">+ MR60FDA2</button><button class="btn" data-action="yaml">Eksportér opsætning</button></div>${this._error?`<div class="error" role="status">${escapeHTML(this._error)}</div>`:''}<p class="note">Kontrollér alle forslag. Vælg de entiteter, der hører til den enkelte radar. Navne alene garanterer ikke korrekt kobling.</p><div class="device-list">${this._config.devices.map(d=>`<section class="settings-device"><div class="toolbar"><h2>${escapeHTML(d.model)}</h2><button class="btn" data-action="remove" data-id="${escapeHTML(d.id)}">Fjern fra visningen</button></div><div class="fields"><label class="field">Navn<input data-device="${escapeHTML(d.id)}" data-key="name" value="${escapeHTML(d.name)}" maxlength="100"></label><label class="field">Område<input data-device="${escapeHTML(d.id)}" data-key="area" value="${escapeHTML(d.area)}" maxlength="100"></label>${Object.entries(ROLES[d.model]).map(([role,label])=>{
+    return `<div class="toolbar" style="margin-bottom:18px"><button class="btn primary" data-action="discover" ${!this._connected||this._discovering?'disabled':''}>${this._discovering?'Søger…':'Find Seeed-enheder'}</button><button class="btn" data-action="pick" ${!this._connected||this._discovering?'disabled':''}>Vælg ESPHome-enhed</button><button class="btn" data-action="add" data-model="MR60BHA2">+ MR60BHA2</button><button class="btn" data-action="add" data-model="MR60FDA2">+ MR60FDA2</button><button class="btn" data-action="yaml">Eksportér opsætning</button></div>${this._error?`<div class="error" role="status">${escapeHTML(this._error)}</div>`:''}${this._picker()}<p class="note">Kontrollér alle forslag. Vælg de entiteter, der hører til den enkelte radar. Navne alene garanterer ikke korrekt kobling.</p><div class="device-list">${this._config.devices.map(d=>`<section class="settings-device"><div class="toolbar"><h2>${escapeHTML(d.model)}</h2><button class="btn" data-action="remove" data-id="${escapeHTML(d.id)}">Fjern fra visningen</button></div><div class="fields"><label class="field">Navn<input data-device="${escapeHTML(d.id)}" data-key="name" value="${escapeHTML(d.name)}" maxlength="100"></label><label class="field">Område<input data-device="${escapeHTML(d.id)}" data-key="area" value="${escapeHTML(d.area)}" maxlength="100"></label>${Object.entries(ROLES[d.model]).map(([role,label])=>{
       const domain=['presence','fall'].includes(role)?'binary_sensor.':'sensor.';
       const current=d.entities[role];
-      const ids=Object.keys(states).filter(id=>id.startsWith(domain)); if(current&&!ids.includes(current))ids.push(current);ids.sort();
+      const ids=this._entityOptions(d,role);
       return `<label class="field">${label}<select data-device="${escapeHTML(d.id)}" data-key="${role}" data-entity="true"><option value="">Ikke valgt</option>${ids.map(id=>`<option value="${escapeHTML(id)}" ${id===current?'selected':''}>${escapeHTML(states[id]?.attributes?.friendly_name || id)} — ${escapeHTML(id)}</option>`).join('')}</select></label>`;
     }).join('')}</div></section>`).join('')}</div><p class="note">Opsætningen gemmes i Home Assistant-appen og bruges på alle dine enheder. Status for lagringen vises øverst.</p>`;
   }
