@@ -365,7 +365,7 @@ export class ESP32HealthDashboard extends HTMLElement {
     if(settings.notification_level==='critical'&&settings.notify_service==='persistent_notification.create'){
       this._testMessages[id]='Vælg en telefon eller tablet til en kritisk testbesked.';this._refreshTestStatus();return;
     }
-    this._testingId=id;this._testMessages[id]='Sender testbesked…';this._refreshTestStatus();
+    this._testingId=id;this._testingLevel=settings.notification_level;this._testMessages[id]='Sender testbesked…';this._refreshTestStatus();
     try {
       const result=await this._hass.testNotification(settings);
       this._testMessages[id]=result.message;
@@ -379,7 +379,7 @@ export class ESP32HealthDashboard extends HTMLElement {
     for(const button of this.shadowRoot.querySelectorAll('[data-action="test-notification"]')){
       const settings=this._notificationSettings(button.dataset.id);if(button.dataset.testLevel)settings.notification_level=button.dataset.testLevel;
       button.disabled=Boolean(this._testingId||Date.now()<this._testCooldownUntil||!this._connected||this._hass?.configSaving);
-      button.textContent=this._testingId===button.dataset.id?'Sender testbesked…':settings.notification_level==='critical'?'Send kritisk testbesked':'Send testbesked';
+      button.textContent=this._testingId===button.dataset.id&&this._testingLevel===settings.notification_level?'Sender testbesked…':settings.notification_level==='critical'?'Send kritisk testbesked':'Send testbesked';
     }
     for(const result of this.shadowRoot.querySelectorAll('[data-test-result]'))result.textContent=this._testMessages[result.dataset.testResult] || '';
   }
