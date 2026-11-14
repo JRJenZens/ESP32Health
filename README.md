@@ -26,7 +26,7 @@ Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne 
 - Manuel liste over ESPHome-enheder og radarmodelvalg. Sensorvalg afgrænses til den valgte fysiske enhed; generiske ESP32-modelnavne og danske sensornavne understøttes.
 - Liveopdateringer, automatisk genforbindelse og rådata med forklaring, når målinger mangler.
 - Monitor med store tal og frekvensbaseret rytmeanimation, tydeligt mærket som illustration og ikke EKG.
-- Valgfrie grænser for høj/lav puls og vejrtrækning, manglende signal og muligt fald. Beskeder til Home Assistant eller en valgt Companion-app.
+- Valgfrie grænser for høj/lav puls og vejrtrækning, manglende signal og muligt fald. Beskeder til Home Assistant eller en valgt Companion-app, med valg mellem almindelig og kritisk besked på iPhone/iPad samt en testknap.
 - Recorder-historik for 1, 6, 12 eller 24 timer samt CSV-eksport.
 - Bordeaux og rosa design, som tilpasser sig computer, iPhone og iPad.
 
@@ -35,6 +35,10 @@ Appen bruger Home Assistants interne API gennem Supervisor. Login og adgang til 
 ## Valgfrie alarmregler
 
 Åbn **Alarmer**, vælg dine egne grænser, forsinkelse og beskedmodtager, markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Alt er slået fra ved installation; tomme grænser betyder ingen regel. Regler kører i appen, også når web-UI er lukket, men kræver en kørende app og Home Assistant. Grænser vurderes kun ved brugbare målinger. Signaltabsreglen dækker også nul, ingen person, forkert målezone og afbrudt forbindelse.
+
+Vælg **Beskedtype → Almindelig besked** eller **Kritisk besked · iPhone/iPad** for hver radar. Almindelig er standard og bruger standardlyden på telefonen. Kritisk lyd kræver, at Home Assistant må sende kritiske advarsler i iPhones/iPads notifikationsindstillinger; den kan da afspille lyd trods lydløs tilstand og Fokus. Kritisk kan kun vælges med en Companion-modtager. Denne udgave implementerer den kritiske profil til iOS; den etablerer ikke Android-alarmkanaler. Se [Companion-dokumentationen](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+
+**Send testbesked** tester den aktuelt valgte modtager og beskedtype uden at gemme eller aktivere alarmregler. Den bruger samme afsendelse som alarmreglerne og gemmer et testresultat i loggen. Højst én test hvert 10. sekund. En accepteret test er ikke bevis for, at telefonen har modtaget den; kontrollér telefonen.
 
 En betingelse skal vare hele forsinkelsen (5–600 sekunder). Der sendes én besked pr. hændelse og højst én pr. regel hvert femte minut. Forsinkelsen starter forfra efter genstart eller afbrydelse; allerede udløste hændelser deduplikeres efter genstart. Leveringsfejl eller uafklaret afsendelse vises i loggen og gentages ikke automatisk. En accepteret HA-handling bekræfter ikke levering til telefonen.
 

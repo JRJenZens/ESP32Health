@@ -48,6 +48,12 @@ MR60FDA2 skal være monteret og kalibreret korrekt i ESPHome/Home Assistant. App
 
 Under **Alarmer** vælger du dine egne grænser og en varighed, beskedmodtager og **Slå alarmer til**. Tryk **Gem alarmindstillinger** for hver enhed og vent på **Opsætning gemt**. Tomme grænser er inaktive. Alle regler er slået fra, indtil du aktiverer dem. Modtagere er Home Assistants notifikationer eller en tilgængelig Companion-app.
 
+Vælg **Beskedtype** for hver radar: **Almindelig besked** er standard; **Kritisk besked · iPhone/iPad** kan afspille lyd gennem lydløs tilstand og Fokus, hvis Home Assistant har tilladelse til kritiske advarsler i telefonens notifikationsindstillinger. Vælg en telefon/tablet som modtager for at bruge den kritiske profil. Profilen er til iOS; Android kræver særskilt opsætning af alarmkanaler, som denne udgave ikke foretager. [Officiel vejledning](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+
+Tryk **Send testbesked** eller **Send kritisk testbesked** for at teste det valgte mål og typen ovenfor. Testen virker, selv når alarmregler er slået fra, og ændrer ikke reglerne. Den gemmes i loggen, bruger samme afsendelse som alarmer og kan højst sendes hvert 10. sekund. Kontrollér på telefonen, at den vises og eventuelt afspiller lyd. Tryk **Gem alarmindstillinger** for at bruge valget til kommende alarmer.
+
+Hvis en test accepteres af HA, men ikke vises: kontrollér, at den valgte Companion-modtager er den aktuelle telefon. Åbn Home Assistant-appen på telefonen og kontrollér notifikationstilladelser, lyde og eventuelt kritiske advarsler. En eksisterende service i HA beviser ikke, at en gammel telefonregistrering stadig modtager push.
+
 Alarmkontrollen kører i appen, selv om browseren er lukket. Appen og Home Assistant skal være startet og tilgængelige; stop, opdatering, genstart eller strømsvigt giver et hul i kontrollen. Grænseregler kræver brugbare målebetingelser. Valgfrit signaltab omfatter også ingen person, nulmåling, forkert afstand og afbrudt forbindelse. Det er ikke en bekræftet vejrtrækningspause.
 
 Forsinkelsen kan sættes til 5–600 sekunder og starter forfra ved afbrydelse eller genstart. Der sendes én besked pr. hændelse, højst én pr. regel hvert femte minut. Loggen viser op til 50 hændelser, herunder afsendelsesfejl og uafklaret levering efter afbrydelse. Der forsøges ikke automatisk igen ved fejl; kontrollér modtager og HA, og afprøv næste hændelse. Home Assistants accept er ikke en kvittering fra telefonen. Appen er ikke medicinsk udstyr eller et medicinsk alarmsystem.

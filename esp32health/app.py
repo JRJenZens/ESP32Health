@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from aiohttp import web
 from ha_bridge import HABridge, HAUnavailable
 from alerts import AlertEngine, validate_alerts
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},
@@ -140,6 +141,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     hub = SnapshotHub()
     ha = bridge if bridge is not None else HABridge(token or os.environ.get('SUPERVISOR_TOKEN', ''))
     alerts = AlertEngine(Path(config_path).with_name('alerts.json'), ha.notify)
+    last_test_at = None
 
     def snapshot():
         selected = store.entity_ids()
@@ -235,6 +237,27 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     async def targets(request):
         return web.json_response(await ha.notification_targets())
 
+    async def test_notification(request):
+        nonlocal last_test_at
+        value = await request.json()
+        if not isinstance(value, dict) or set(value) != {'device_id', 'notify_service', 'notification_level'}:
+            raise ValueError('Ugyldig testforespørgsel.')
+        device = next((d for d in store.config['devices'] if d['id'] == value['device_id']), None)
+        if device is None:
+            raise ValueError('Vælg en gemt enhed til testen.')
+        settings = validate_alerts({k: value[k] for k in ('notify_service', 'notification_level')}, device['model'])
+        now = time.monotonic()
+        if last_test_at is not None and now - last_test_at < 10:
+            return web.json_response({'error': 'Vent 10 sekunder mellem testbeskeder.'}, status=429,
+                                     headers={'Retry-After': '10'})
+        last_test_at = now
+        try:
+            event = await alerts.send_test(device, settings)
+        except (HAUnavailable, TimeoutError):
+            return web.json_response({'error': 'Testbeskeden kunne ikke sendes. Kontrollér Home Assistant og den valgte modtager. Fejlen er gemt i alarmloggen.'}, status=503)
+        return web.json_response({'accepted': True, 'event_id': event['id'],
+                                  'message': 'Home Assistant har accepteret testbeskeden. Kontrollér modtagelsen på telefonen.'})
+
     async def events(request):
         response = web.StreamResponse(headers={'Content-Type': 'text/event-stream', 'X-Accel-Buffering': 'no'})
         await response.prepare(request)
@@ -270,6 +293,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
                     web.put('/api/config', config_put), web.get('/api/events', events),
                     web.get('/api/registry/{kind:device|entity|area}', registry_get),
                     web.get('/api/notification-targets', targets),
+                    web.post('/api/notifications/test', test_notification),
                     web.post('/api/history', history), web.get('/', asset), web.get('/{name}', asset)])
     return app
 

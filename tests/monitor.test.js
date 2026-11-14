@@ -24,3 +24,24 @@ test('Alarm drafts require deliberate saving and validate ordered limits',()=>{
  context._alertDrafts.test.heart_low=40;ESP32HealthDashboard.prototype._saveAlerts.call(context,'test');assert.equal(committed.length,1);assert.equal(committed[0].devices[0].alerts.heart_low,40);
  assert.equal(DEFAULT_ALERTS.enabled,false);assert.equal(DEFAULT_ALERTS.heart_high,null);
 });
+
+test('Critical mode is saved explicitly and requires a Companion target',()=>{
+ const committed=[];const context={_config:{devices:[d]},_alertDrafts:{test:{...DEFAULT_ALERTS,notification_level:'critical'}},_refreshAlarmStatus:()=>{},_commit:c=>committed.push(c)};
+ ESP32HealthDashboard.prototype._saveAlerts.call(context,'test');assert.equal(committed.length,0);assert.match(context._alarmError,/telefon/);
+ context._alertDrafts.test.notify_service='notify.mobile_app_test';ESP32HealthDashboard.prototype._saveAlerts.call(context,'test');
+ assert.equal(committed[0].devices[0].alerts.notification_level,'critical');assert.equal(committed[0].devices[0].alerts.enabled,false);
+ assert.equal(DEFAULT_ALERTS.notification_level,'normal');
+});
+test('Test button sends only the chosen target/mode without saving or arming',async()=>{
+ const requests=[];const payload={device_id:'test',notify_service:'notify.mobile_app_test',notification_level:'critical'};
+ const context={_connected:true,_testingId:'',_testCooldownUntil:0,_testMessages:{},_notificationSettings:()=>payload,_refreshTestStatus:()=>{},_hass:{testNotification:async value=>{requests.push(value);return {message:'Accepteret af Home Assistant. Kontrollér telefonen.'};}}};
+ await ESP32HealthDashboard.prototype._testNotification.call(context,'test');
+ assert.deepEqual(requests,[payload]);assert.match(context._testMessages.test,/Kontrollér telefonen/);
+ await ESP32HealthDashboard.prototype._testNotification.call(context,'test');assert.equal(requests.length,1);
+ clearTimeout(context._testCooldownTimer);
+});
+test('Failed test is visible and never described as delivered',async()=>{
+ const context={_connected:true,_testingId:'',_testCooldownUntil:0,_testMessages:{},_notificationSettings:()=>({notify_service:'notify.mobile_app_test',notification_level:'normal'}),_refreshTestStatus:()=>{},_hass:{testNotification:async()=>{throw Error('Forbindelsen er afbrudt');}}};
+ await ESP32HealthDashboard.prototype._testNotification.call(context,'test');
+ assert.equal(context._testMessages.test,'Forbindelsen er afbrudt');clearTimeout(context._testCooldownTimer);
+});

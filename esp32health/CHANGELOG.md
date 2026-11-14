@@ -1,3 +1,14 @@
+# 0.3.1
+
+- Vælg almindelig eller kritisk besked pr. radar. Almindelig er standard.
+- Kritisk lyd og prioritet til iPhone/iPad gennem Home Assistant Companion.
+- Angiv standardlyd eksplicit for almindelige telefonbeskeder.
+- Send en tydeligt markeret testbesked med valgt modtager og beskedtype, også mens alarmregler er slået fra.
+- Testen bruger samme afsendelse som alarmerne og gemmer resultatet i den lokale log.
+- Testbeskeder kan højst sendes hvert 10. sekund og ændrer ikke alarmgrænser eller aktivering.
+- Bevar begrænsningen på én alarmbesked pr. regel hvert femte minut ved ændring af indstillinger.
+- Vis almindelig/kritisk besked i nye loghændelser. Kritiske advarsler kræver tilladelse på iPhone/iPad.
+
 # 0.3.0
 
 - Monitor med store tal og frekvensbaseret animation, tydeligt adskilt fra EKG.

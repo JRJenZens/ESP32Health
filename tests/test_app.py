@@ -56,15 +56,19 @@ class FakeBridge:
     async def close(self):
         pass
 
-    async def notify(self, service, title, message, tag):
+    async def notify(self, service, title, message, tag, notification_level='normal'):
         if not self.connected:
             raise HAUnavailable()
-        self.commands.append({'type': 'notification', 'service': service, 'message': message})
+        if service not in {x['id'] for x in await self.notification_targets()}:
+            raise ValueError('Unknown notification target.')
+        self.commands.append({'type': 'notification', 'service': service, 'message': message,
+                              'notification_level': notification_level})
 
     async def notification_targets(self):
         if not self.connected:
             raise HAUnavailable()
-        return [{'id': 'persistent_notification.create', 'name': 'Home Assistant'}]
+        return [{'id': 'persistent_notification.create', 'name': 'Home Assistant'},
+                {'id': 'notify.mobile_app_test', 'name': 'Synthetic phone'}]
 
     async def refresh_registries(self):
         if not self.connected:

@@ -1,4 +1,4 @@
-"""Read-only Home Assistant bridge. The Supervisor credential never leaves Python."""
+"""Sensor reads and fixed notification calls. Credentials never leave Python."""
 import asyncio
 import contextlib
 import logging
@@ -89,8 +89,12 @@ class HABridge:
                 result.append({'id': 'notify.' + service, 'name': description.get('name') or service})
         return result
 
-    async def notify(self, service, title, message, tag):
+    async def notify(self, service, title, message, tag, notification_level='normal'):
         # No generic service proxy: fixed notification fields and Companion targets only.
+        if notification_level not in ('normal', 'critical'):
+            raise ValueError('Unknown notification level.')
+        if notification_level == 'critical' and service == 'persistent_notification.create':
+            raise ValueError('Critical notifications require a Companion target.')
         if not valid_target(service) or service not in {x['id'] for x in await self.notification_targets()}:
             raise ValueError('Notification destination is unavailable.')
         domain, action = service.split('.')
@@ -98,7 +102,11 @@ class HABridge:
         if domain == 'persistent_notification':
             data['notification_id'] = 'esp32health_' + tag
         else:
-            data['data'] = {'tag': 'esp32health_' + tag}
+            push = {'sound': 'default'}
+            if notification_level == 'critical':
+                push = {'sound': {'name': 'default', 'critical': 1, 'volume': 1.0},
+                        'interruption-level': 'critical'}
+            data['data'] = {'tag': 'esp32health_' + tag, 'push': push}
         await self._request({'type': 'call_service', 'domain': domain, 'service': action, 'service_data': data})
 
     async def _request(self, command):

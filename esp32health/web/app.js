@@ -20,7 +20,7 @@ async function callWS(command) {
   if(command.type==='history/history_during_period')return api('api/history',{method:'POST',body:JSON.stringify(command)});
   throw new Error('Denne læseforespørgsel understøttes ikke.');
 }
-function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS,notificationTargets:()=>api('api/notification-targets')};}
+function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS,notificationTargets:()=>api('api/notification-targets'),testNotification:value=>api('api/notifications/test',{method:'POST',body:JSON.stringify(value)})};}
 async function loadConfig(){const document=await api('api/config');revision=document.revision;dashboard.setConfig(document.config);updateHass();}
 dashboard.addEventListener('esp32health-config-changed',event=>{
   const config=structuredClone(event.detail.config);

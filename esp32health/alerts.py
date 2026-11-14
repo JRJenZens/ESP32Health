@@ -6,12 +6,14 @@ import math
 import os
 import re
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 DEFAULT_ALERTS = {'enabled': False, 'heart_low': None, 'heart_high': None,
                   'breath_low': None, 'breath_high': None, 'signal_loss': False,
-                  'fall': False, 'delay': 30, 'notify_service': 'persistent_notification.create'}
+                  'fall': False, 'delay': 30, 'notify_service': 'persistent_notification.create',
+                  'notification_level': 'normal'}
 LABELS = {'heart_low': 'Puls under din grænse', 'heart_high': 'Puls over din grænse',
           'breath_low': 'Vejrtrækning under din grænse', 'breath_high': 'Vejrtrækning over din grænse',
           'signal_loss': 'Målesignal mangler', 'fall': 'Muligt fald registreret'}
@@ -31,6 +33,10 @@ def validate_alerts(value, model):
             raise ValueError('Alarmvalg skal være slået til eller fra.')
     if not valid_target(result['notify_service']):
         raise ValueError('Vælg Home Assistant eller en Companion-app som beskedmodtager.')
+    if result['notification_level'] not in ('normal', 'critical'):
+        raise ValueError('Vælg almindelig eller kritisk besked.')
+    if result['notification_level'] == 'critical' and result['notify_service'] == 'persistent_notification.create':
+        raise ValueError('Vælg en telefon eller tablet for at sende en kritisk besked.')
     if type(result['delay']) is not int or not 5 <= result['delay'] <= 600:
         raise ValueError('Alarmforsinkelsen skal være 5–600 sekunder.')
     for key in ('heart_low', 'heart_high', 'breath_low', 'breath_high'):
@@ -159,6 +165,30 @@ class AlertEngine:
         finally:
             tmp.unlink(missing_ok=True)
 
+    async def send_test(self, device, settings):
+        """Same constrained sender as alarms; fixed synthetic text, no sensor values."""
+        event = {'id': 'test-' + uuid.uuid4().hex, 'device_id': device['id'], 'name': device['name'],
+                 'rule': 'test_notification', 'label': 'Testbesked', 'at': time.time(),
+                 'reason': 'Test af beskedmodtager · ingen alarm er udløst', 'delivery': 'uncertain',
+                 'notification_level': settings['notification_level'], 'notify_service': settings['notify_service']}
+        self.document['events'].append(event)
+        self._save()
+        self.on_change()
+        try:
+            critical = settings['notification_level'] == 'critical'
+            title = 'ESP32Health · ' + ('Kritisk testbesked' if critical else 'Testbesked')
+            message = 'Dette er en test fra ESP32Health. Ingen sundhedsalarm er udløst. Bekræft på telefonen, at beskeden vises' + (' og afspiller kritisk lyd.' if critical else '.')
+            await asyncio.wait_for(self.notify(settings['notify_service'], title, message,
+                                               event['id'], settings['notification_level']), timeout=12)
+            event['delivery'] = 'sent'
+        except Exception:
+            event['delivery'] = 'failed'
+            raise
+        finally:
+            self._save()
+            self.on_change()
+        return event
+
     async def tick(self, config, states, connected, now=None):
         now = time.time() if now is None else now
         current, rules, dirty = set(), [], False
@@ -179,14 +209,20 @@ class AlertEngine:
                         row['state'] = 'active'
                         event = {'id': f'{key[:12]}-{rule}-{int(now*1000)}', 'device_id': device['id'],
                                  'name': device['name'], 'rule': rule, 'label': LABELS[rule],
-                                 'at': now, 'reason': reason, 'delivery': 'pending'}
+                                 'at': now, 'reason': reason, 'delivery': 'pending',
+                                 'notification_level': settings['notification_level'],
+                                 'notify_service': settings['notify_service']}
                         self.document['events'].append(event)
                         self.document['active'][key] = event['id']
                         # Save before sending. A restart must not duplicate an uncertain delivery.
-                        last_sent = self.document['sent'].get(key, 0)
+                        # Keep the limit across edits of thresholds, delay, target or priority.
+                        cooldown_key = hashlib.sha256(json.dumps([device['id'], rule]).encode()).hexdigest()
+                        previous = (e['at'] for e in self.document['events'] if e.get('device_id') == device['id']
+                                    and e.get('rule') == rule and e.get('delivery') in ('sent', 'uncertain', 'failed'))
+                        last_sent = max(self.document['sent'].get(cooldown_key, 0), max(previous, default=0))
                         event['delivery'] = 'cooldown' if now - last_sent < 300 else 'uncertain'
                         if event['delivery'] != 'cooldown':
-                            self.document['sent'][key] = now
+                            self.document['sent'][cooldown_key] = now
                         self._save()
                         self.on_change()
                         if event['delivery'] != 'cooldown':
@@ -195,7 +231,7 @@ class AlertEngine:
                                 if rule == 'signal_loss':
                                     message += ' Manglende signal dokumenterer ikke vejrtrækningsstop.'
                                 tag = hashlib.sha256(key.encode()).hexdigest()[:20]
-                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESP32Health · '+LABELS[rule], message, tag), timeout=12)
+                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESP32Health · '+LABELS[rule], message, tag, settings['notification_level']), timeout=12)
                                 event['delivery'] = 'sent'
                             except (Exception,):
                                 # No payload or health data in logs. Failure is visible in the local log.
