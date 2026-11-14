@@ -177,7 +177,7 @@ class AlertEngine:
         try:
             critical = settings['notification_level'] == 'critical'
             title = 'ESP32Health · ' + ('Kritisk testbesked' if critical else 'Testbesked')
-            message = 'Dette er en test fra ESP32Health. Ingen sundhedsalarm er udløst. Bekræft på telefonen, at beskeden vises' + (' og afspiller kritisk lyd.' if critical else '.')
+            message = 'Dette er en test fra ESP32Health. Ingen sundhedsalarm er udløst. Bekræft, at beskeden vises' + (' og afspiller kritisk lyd på telefonen.' if critical else '.')
             await asyncio.wait_for(self.notify(settings['notify_service'], title, message,
                                                event['id'], settings['notification_level']), timeout=12)
             event['delivery'] = 'sent'

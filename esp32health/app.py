@@ -255,8 +255,9 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
             event = await alerts.send_test(device, settings)
         except (HAUnavailable, TimeoutError):
             return web.json_response({'error': 'Testbeskeden kunne ikke sendes. Kontrollér Home Assistant og den valgte modtager. Fejlen er gemt i alarmloggen.'}, status=503)
+        destination = 'i Home Assistants notifikationer' if settings['notify_service'] == 'persistent_notification.create' else 'på telefonen'
         return web.json_response({'accepted': True, 'event_id': event['id'],
-                                  'message': 'Home Assistant har accepteret testbeskeden. Kontrollér modtagelsen på telefonen.'})
+                                  'message': 'Home Assistant har accepteret testbeskeden. Kontrollér modtagelsen ' + destination + '.'})
 
     async def events(request):
         response = web.StreamResponse(headers={'Content-Type': 'text/event-stream', 'X-Accel-Buffering': 'no'})
