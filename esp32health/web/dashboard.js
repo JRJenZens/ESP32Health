@@ -1,5 +1,5 @@
-/* ESPHealth v0.5.0 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.5.0';
+/* ESPHealth v0.5.1 | MIT | https://github.com/JRJenZens/ESPHealth */
+export const VERSION = '0.5.1';
 export const THRESHOLD_RULES=['heart_low','heart_high','breath_low','breath_high'];
 export const DEFAULT_ALERTS = {enabled:false,heart_low:null,heart_high:null,breath_low:null,breath_high:null,signal_loss:false,fall:false,delay:30,notify_service:'persistent_notification.create',notification_level:'normal',threshold_version:2,critical_heart_low:null,critical_heart_high:null,critical_breath_low:null,critical_breath_high:null};
 export function normalizeAlerts(value={}) {
@@ -284,15 +284,24 @@ export class ESP32HealthDashboard extends HTMLElement {
     const current=device.indicator?.entity_id;if(current&&!ids.includes(current))ids.push(current);
     return ids.sort();
   }
+  _brightnessEntity(d) {
+    const entries=this._registries.entities;
+    const owner=entries.find(e=>e.entity_id===d.indicator?.entity_id)?.device_id;
+    const candidates=owner?entries.filter(e=>e.device_id===owner&&e.platform==='esphome'&&!e.disabled_by&&/^number\..+_esphealth_led_lysstyrke(?:_\d+)?$/.test(e.entity_id)):[];
+    return candidates.length===1?candidates[0].entity_id:'';
+  }
   _indicatorPanel(d) {
     const a={enabled:false,entity_id:'',...d.indicator,...this._indicatorDrafts[d.id]};
     const options=this._indicatorOptions(d),states=this._hass?.states || {};
-    return `<section class="indicator-panel"><h3>Status-LED</h3><label class="check"><input type="checkbox" data-device="${escapeHTML(d.id)}" data-indicator-key="enabled" ${a.enabled?'checked':''}>Brug radarens LED til ESPHealth-status</label><label class="field">ESPHealth LED status<select data-device="${escapeHTML(d.id)}" data-indicator-key="entity_id"><option value="">Vælg status-LED</option>${options.map(id=>`<option value="${escapeHTML(id)}" ${id===a.entity_id?'selected':''}>${escapeHTML(states[id]?.attributes?.friendly_name || id)}</option>`).join('')}</select></label><p class="note">${options.length?'Status-LED fra samme fysiske radar.':'Installér ESPHome-opsætningen til ESPHealth-status-LED på radaren for at få den med i listen.'}</p><div class="led-legend"><span>🟢 Svagt grøn: person registreret</span><span>🟡 Gult blink: almindelig alarm</span><span>🔴 Rødt blink: kritisk alarm</span><span>🔵 Blåt blink: ingen kontakt til HA/ESPHealth i 45 sekunder</span></div><p class="note">Uden en person er LED’en slukket. Grønt viser tilstedeværelse, ikke en vurdering af sundhed.</p><p class="note" role="status" data-indicator-status="${escapeHTML(d.id)}"></p>${this._indicatorErrors[d.id]?`<p class="error" role="alert">${escapeHTML(this._indicatorErrors[d.id])}</p>`:''}<button class="btn" data-action="save-indicator" data-id="${escapeHTML(d.id)}">Gem LED-indstillinger</button></section>`;
+    const brightnessEntity=this._brightnessEntity(d);
+    const brightness=a.brightness??100;
+    return `<section class="indicator-panel"><h3>Status-LED</h3><label class="check"><input type="checkbox" data-device="${escapeHTML(d.id)}" data-indicator-key="enabled" ${a.enabled?'checked':''}>Brug radarens LED til ESPHealth-status</label><label class="field">ESPHealth LED status<select data-device="${escapeHTML(d.id)}" data-indicator-key="entity_id"><option value="">Vælg status-LED</option>${options.map(id=>`<option value="${escapeHTML(id)}" ${id===a.entity_id?'selected':''}>${escapeHTML(states[id]?.attributes?.friendly_name || id)}</option>`).join('')}</select></label><p class="note">${options.length?'Status-LED fra samme fysiske radar.':'Installér ESPHome-opsætningen til ESPHealth-status-LED på radaren for at få den med i listen.'}</p>${brightnessEntity?`<label class="field">LED-lysstyrke · <output data-brightness-output="${escapeHTML(d.id)}">${escapeHTML(brightness)}</output> %<input type="range" min="0" max="100" step="1" value="${escapeHTML(brightness)}" data-device="${escapeHTML(d.id)}" data-indicator-key="brightness"></label><p class="note">Samlet lysstyrke for statusfarverne. 100 % bevarer den nuværende styrke; grønt er dæmpet i forhold til alarmer. 0 % slukker alle farver. Valget gemmes på radaren og gælder også ved mistet forbindelse.</p>`:'<p class="note">Opdatér radarens ESPHealth-firmware for at kunne regulere lysstyrken her.</p>'}<div class="led-legend"><span>🟢 Svagt grøn: person registreret</span><span>🟡 Gult blink: almindelig alarm</span><span>🔴 Rødt blink: kritisk alarm</span><span>🔵 Blåt blink: ingen kontakt til HA/ESPHealth i 45 sekunder</span></div><p class="note">Uden en person er LED’en slukket. Grønt viser tilstedeværelse, ikke en vurdering af sundhed.</p><p class="note" role="status" data-indicator-status="${escapeHTML(d.id)}"></p>${this._indicatorErrors[d.id]?`<p class="error" role="alert">${escapeHTML(this._indicatorErrors[d.id])}</p>`:''}<button class="btn" data-action="save-indicator" data-id="${escapeHTML(d.id)}">Gem LED-indstillinger</button></section>`;
   }
   _saveIndicator(id) {
     const device=this._config.devices.find(x=>x.id===id);
     const a={enabled:false,entity_id:'',...device.indicator,...this._indicatorDrafts[id]};
-    for(const el of this.shadowRoot.querySelectorAll('[data-indicator-key]'))if(el.dataset.device===id)a[el.dataset.indicatorKey]=el.type==='checkbox'?el.checked:el.value;
+    for(const el of this.shadowRoot.querySelectorAll('[data-indicator-key]'))if(el.dataset.device===id)a[el.dataset.indicatorKey]=el.type==='checkbox'?el.checked:el.type==='range'?Number(el.value):el.value;
+    const brightnessEntity=this._brightnessEntity(device);if(brightnessEntity&&a.brightness!==undefined)a.brightness_entity_id=brightnessEntity;
     this._indicatorErrors[id]=a.enabled&&!a.entity_id?'Vælg status-LED, før den aktiveres.':'';
     if(this._indicatorErrors[id]){this.render();return;}
     delete this._indicatorDrafts[id];this._commit({...this._config,devices:this._config.devices.map(d=>d.id===id?{...d,indicator:a}:d)});
@@ -357,7 +366,7 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _change(e) {
     const el = e.target;
-    if(el.dataset.indicatorKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);this._indicatorDrafts[d.id]={enabled:false,entity_id:'',...d.indicator,...this._indicatorDrafts[d.id],[el.dataset.indicatorKey]:el.type==='checkbox'?el.checked:el.value};return;}
+    if(el.dataset.indicatorKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);this._indicatorDrafts[d.id]={enabled:false,entity_id:'',...d.indicator,...this._indicatorDrafts[d.id],[el.dataset.indicatorKey]:el.type==='checkbox'?el.checked:el.type==='range'?Number(el.value):el.value};if(el.dataset.indicatorKey==='brightness'){const output=this.shadowRoot.querySelector(`[data-brightness-output="${CSS.escape(d.id)}"]`);if(output)output.textContent=el.value;}return;}
     if(el.dataset.alertKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);const key=el.dataset.alertKey;this._alertDrafts[d.id]={...normalizeAlerts(d.alerts),...this._alertDrafts[d.id],[key]:el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value};this._refreshTestStatus();return;}
     if(el.dataset.pickerDevice){this._pickerDevice=el.value;const d=this._registries.devices.find(x=>x.id===el.value);this._pickerModel=d?inferModel(d,this._registries.entities,this._hass?.states || {}):'';this.render();return;}
     if(el.dataset.pickerModel){this._pickerModel=el.value;this.render();return;}

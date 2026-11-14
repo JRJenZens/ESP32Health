@@ -1,6 +1,6 @@
 # ESPHealth status-LED fragment; merge into the existing device YAML.
 # Requires existing rgb_led (RGB light) and radar_presence (binary sensor) IDs.
-# Do not duplicate existing top-level select/globals/interval sections; merge lists.
+# Do not duplicate existing top-level select/number/globals/interval sections; merge lists.
 # Heartbeat arrives via HA from ESPHealth every 15 s; missing for 45 s => blue.
 # LED control is off until explicitly enabled in ESPHealth.
 
@@ -37,6 +37,23 @@ select:
           id(esphealth_led_last_seen) = millis();
           id(esphealth_led_frame) = -1;
 
+number:
+  - platform: template
+    id: esphealth_led_brightness
+    name: "ESPHealth LED lysstyrke"
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: slider
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+    set_action:
+      - lambda: |-
+          id(esphealth_led_frame) = -1;
+
 interval:
   - interval: 500ms
     then:
@@ -50,7 +67,8 @@ interval:
             else if (id(esphealth_led_status).current_option() == "Advarsel") mode = 2;
             else if (id(radar_presence).has_state() && id(radar_presence).state) mode = 1;
           }
-          const bool lit = mode == 1 || (mode >= 2 && ((now / 500U) % 2U == 0));
+          const float scale = id(esphealth_led_brightness).state / 100.0f;
+          const bool lit = scale > 0 && (mode == 1 || (mode >= 2 && ((now / 500U) % 2U == 0)));
           const int frame = mode * 2 + (lit ? 1 : 0);
           if (frame == id(esphealth_led_frame)) return;
           id(esphealth_led_frame) = frame;
@@ -61,6 +79,6 @@ interval:
             call.set_rgb(mode == 2 || mode == 3 ? 1.0f : 0.0f,
                          mode == 1 || mode == 2 ? 1.0f : 0.0f,
                          mode == 4 ? 1.0f : 0.0f);
-            call.set_brightness(mode == 1 ? 0.20f : mode == 2 ? 0.35f : mode == 3 ? 0.50f : 0.25f);
+            call.set_brightness(scale * (mode == 1 ? 0.20f : mode == 2 ? 0.35f : mode == 3 ? 0.50f : 0.25f));
           }
           call.perform();

@@ -7,7 +7,7 @@ from pathlib import Path
 import test_app as fixture
 from app import validate_config
 from ha_bridge import HABridge, sensor_state
-from indicators import IndicatorController, LED_OPTIONS, indicator_mode, validate_binding
+from indicators import IndicatorController, LED_OPTIONS, indicator_mode, validate_binding, validate_brightness_binding, validate_indicator
 
 
 class IndicatorTests(unittest.IsolatedAsyncioTestCase):
@@ -33,6 +33,41 @@ class IndicatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(indicator_mode(self.device,[row]),'Auto')
         self.device['indicator']['enabled']=False
         self.assertEqual(indicator_mode(self.device,[row]),'Slukket')
+
+    async def test_brightness_is_applied_on_change_and_reconnect_but_not_each_heartbeat(self):
+        self.device['indicator'].update(brightness_entity_id='number.test_bha_esphealth_led_lysstyrke', brightness=35)
+        await self.controller.tick(0)
+        await self.controller.tick(15)
+        self.assertEqual([x['value'] for x in self.bridge.commands if x['type']=='brightness'], [35])
+        self.device['indicator']['brightness'] = 0
+        await self.controller.tick(16)
+        self.assertEqual(self.bridge.commands[-2]['value'], 0)
+        self.bridge.connected=False
+        await self.controller.tick(17)
+        self.bridge.connected=True
+        await self.controller.tick(18)
+        self.assertEqual([x['value'] for x in self.bridge.commands if x['type']=='brightness'], [35,0,0])
+
+    async def test_brightness_rejects_foreign_controls_and_invalid_values(self):
+        self.device['indicator'].update(brightness_entity_id='number.test_bha_esphealth_led_lysstyrke', brightness=35)
+        self.assertEqual(validate_brightness_binding(self.device,self.bridge.registries,self.bridge.states),self.device['indicator']['brightness_entity_id'])
+        for level in (-1,101,True,1.5,'50'):
+            with self.assertRaises(ValueError):validate_indicator({**self.device['indicator'],'brightness':level})
+        for target in ('number.test_fda_esphealth_led_lysstyrke','number.radar_sensitivity'):
+            self.device['indicator']['brightness_entity_id']=target
+            with self.assertRaises(ValueError):validate_brightness_binding(self.device,self.bridge.registries,self.bridge.states)
+
+    async def test_bridge_brightness_uses_fixed_number_action_and_redacts_other_numbers(self):
+        bridge=HABridge('synthetic')
+        bridge.registries=self.bridge.registries;bridge.states=self.bridge.states
+        async def refresh():pass
+        calls=[]
+        async def request(command):calls.append(command)
+        bridge.refresh_registries=refresh;bridge._request=request
+        self.device['indicator'].update(brightness_entity_id='number.test_bha_esphealth_led_lysstyrke', brightness=50)
+        await bridge.set_indicator_brightness(self.device)
+        self.assertEqual(calls,[{'type':'call_service','domain':'number','service':'set_value','target':{'entity_id':'number.test_bha_esphealth_led_lysstyrke'},'service_data':{'value':50}}])
+        self.assertIsNone(sensor_state({'entity_id':'number.radar_sensitivity','state':'1','attributes':{}}))
 
     async def test_heartbeat_updates_without_sensor_changes_and_color_changes_are_immediate(self):
         await self.controller.tick(0)

@@ -1,8 +1,8 @@
 name: ESPHealth
-version: 0.5.0
+version: 0.5.1
 slug: esp32health
 description: Kontaktløst overblik over puls, vejrtrækning og faldsignaler fra ESPHome-radarer
-url: https://github.com/JRJenZens/ESP32Health
+url: https://github.com/JRJenZens/ESPHealth
 arch:
   - amd64
   - aarch64

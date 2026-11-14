@@ -3,7 +3,7 @@
 ## Installér fra GitHub under Apps
 
 1. Åbn **Indstillinger → Apps → App-butik** i Home Assistant.
-2. Vælg **⋮ → Repositories** og tilføj `https://github.com/JRJenZens/ESP32Health`.
+2. Vælg **⋮ → Repositories** og tilføj `https://github.com/JRJenZens/ESPHealth`.
 3. Find **ESPHealth**, og tryk **Installér**. Første installation bygger appen og kan tage nogle minutter.
 4. Tryk **Start** og **Åbn web-UI**.
 5. Slå eventuelt **Vis i sidepanel** og **Start ved opstart** til.
@@ -94,3 +94,20 @@ Eksisterende ESP32Health-installationer opdateres til navnet **ESPHealth** genne
 Opdater via appens side i Home Assistant, når en ny version vises. Ved behov vælges **Søg efter opdateringer** i app-butikken. Opsætningen ligger i `/data/config.json`, den lokale alarmlog i `/data/alerts.json`, og begge følger med en backup af appen. Målehistorikken ligger fortsat i Home Assistant Recorder.
 
 Fra den tidligere Marketplace/HACS-version: Fjern det gamle dashboardkort og dets ressource, og afinstallér den gamle pakke. Bevar ESPHome-enheder og sensorentiteter. Vælg radarerne igen i appen; de gamle koblinger flyttes ikke automatisk.
+
+## Flytning fra den gamle GitHub-adresse
+
+Home Assistant knytter en installation til repository-adressen. Når adressen ændres fra `ESP32Health` til `ESPHealth`, oprettes derfor en ny app-identitet.
+
+1. Opdater den eksisterende app til mindst 0.5.1. Den gamle GitHub-adresse viderestiller til den nye.
+2. Åbn **Backup og flytning** nederst i ESPHealth og vælg **Hent backup**. Tag også gerne en Home Assistant-backup af appen.
+3. Tilføj `https://github.com/JRJenZens/ESPHealth` som repository i app-butikken og installer ESPHealth fra den nye kilde.
+4. Stop den gamle installation, før du indlæser backup i den nye, tomme installation. Dermed sender kun én installation alarmer og LED-kommandoer.
+5. Åbn den nye app, vælg backupfilen under **Backup og flytning**, og tryk **Indlæs backup i tom installation**.
+6. Kontrollér enheder, alarmer og LED-status. Den gamle installation kan derefter afinstalleres, og det gamle repository kan fjernes.
+
+Backupfilen indeholder enhedsnavne, sensorkoblinger, alarmindstillinger og den lokale alarmlog. Den indeholder ingen adgangsnøgler. Opbevar den privat. Målehistorikken bliver i Home Assistant Recorder. Ventende alarmtidsperioder starter forfra; gemte aktive alarmer og beskeders gentagelsesbeskyttelse følger med. Import er kun mulig i en helt ny installation og validerer LED-tilknytninger og aktiverede beskedmodtagere mod Home Assistant.
+
+## LED-lysstyrke
+
+Under **Enheder → Status-LED** kan lysstyrken reguleres separat for hver radar og gemmes med **Gem LED-indstillinger**. Skyderen vises, når den tilknyttede radar har den nye `ESPHealth LED lysstyrke`-entitet fra ESPHome-fragmentet. 100 % bevarer farvernes hidtidige styrke, grønt forbliver mere dæmpet end alarmfarver, og 0 % slukker alle farver. Indstillingen gemmes på ESP32'en, så også det blå forbindelsesblink følger valget uden kontakt til HA.

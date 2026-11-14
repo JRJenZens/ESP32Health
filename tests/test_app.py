@@ -15,7 +15,7 @@ from aiohttp.test_utils import TestClient, TestServer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'esp32health'))
 from app import ConfigStore, SnapshotHub, STORE_KEY, create_app, history_command, validate_config
 from ha_bridge import HABridge, HAUnavailable, registry_rows, sensor_state
-from indicators import LED_OPTIONS, validate_binding
+from indicators import LED_OPTIONS, validate_binding, validate_brightness_binding
 
 CONFIG = {'title': 'Syntetiske testdata', 'devices': [
     {'id': 'test-bha', 'name': 'TEST · Soveværelse', 'area': 'Testområde', 'model': 'MR60BHA2', 'entities': {
@@ -54,6 +54,9 @@ class FakeBridge:
             entity_id = 'select.' + d['id'].replace('-', '_') + '_esphealth_led_status'
             self.registries['entity'].append({'entity_id':entity_id,'device_id':d['id'],'platform':'esphome','original_name':'ESPHealth LED status'})
             self.states[entity_id] = {'entity_id':entity_id,'state':'Slukket','attributes':{'friendly_name':'ESPHealth LED status','options':list(LED_OPTIONS)}}
+            brightness_id = 'number.' + d['id'].replace('-', '_') + '_esphealth_led_lysstyrke'
+            self.registries['entity'].append({'entity_id':brightness_id,'device_id':d['id'],'platform':'esphome','original_name':'ESPHealth LED lysstyrke'})
+            self.states[brightness_id] = {'entity_id':brightness_id,'state':'100','attributes':{'friendly_name':'ESPHealth LED lysstyrke','min':0,'max':100,'step':1}}
 
     async def start(self):
         self.on_change()
@@ -87,6 +90,11 @@ class FakeBridge:
     async def refresh_registries(self):
         if not self.connected:
             raise HAUnavailable()
+
+    async def set_indicator_brightness(self, device):
+        target = validate_brightness_binding(device, self.registries, self.states)
+        self.commands.append({'type':'brightness','entity_id':target,'value':device['indicator']['brightness']})
+        self.states[target]['state'] = str(device['indicator']['brightness'])
 
     async def call(self, command):
         if not self.connected:

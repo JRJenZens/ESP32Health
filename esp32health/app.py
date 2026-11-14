@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -12,16 +13,45 @@ from pathlib import Path
 from aiohttp import web
 
 from ha_bridge import HABridge, HAUnavailable
-from alerts import AlertEngine, validate_alerts
-from indicators import IndicatorController, validate_indicator, validate_binding
+from alerts import AlertEngine, LABELS, valid_target, validate_alerts
+from indicators import IndicatorController, validate_indicator, validate_binding, validate_brightness_binding
 
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},
     'MR60FDA2': {'presence', 'fall', 'illuminance'},
 }
 DEFAULT_CONFIG = {'title': 'Dit hjem, i overblik', 'devices': [], 'stale_after': 180}
+
+
+def validate_backup(value):
+    """Validate a portable archive without accepting credentials or executable actions."""
+    if not isinstance(value, dict) or set(value) != {'format', 'version', 'config', 'alerts'} or value['format'] != 'ESPHealth-backup' or type(value['version']) is not int or value['version'] != 1:
+        raise ValueError('Filen er ikke en understøttet ESPHealth-backup.')
+    config = validate_config(value['config'])
+    log = value['alerts']
+    if not isinstance(log, dict) or set(log) != {'events', 'active', 'sent'} or not isinstance(log['events'], list) or len(log['events']) > 50 or any(not isinstance(log[k], dict) or len(log[k]) > 1000 for k in ('active', 'sent')):
+        raise ValueError('Ugyldig alarmlog i backup.')
+    def timestamp(n):
+        return type(n) in (int, float) and math.isfinite(n) and 0 <= n <= time.time() + 300
+    fields = {'id', 'device_id', 'name', 'rule', 'label', 'at', 'reason', 'delivery', 'notification_level', 'notify_service', 'duration', 'threshold_version', 'ended_at'}
+    required = {'id', 'device_id', 'name', 'rule', 'label', 'at', 'reason', 'delivery'}
+    for event in log['events']:
+        if not isinstance(event, dict) or not required <= event.keys() or event.keys() - fields:
+            raise ValueError('Ugyldig hændelse i backup.')
+        if any(not isinstance(event[k], str) or len(event[k]) > 2000 for k in ('id', 'device_id', 'name', 'rule', 'label', 'reason', 'delivery')) or event['rule'] not in {*LABELS, 'test_notification'} or event['delivery'] not in {'pending', 'sent', 'uncertain', 'failed', 'cooldown'}:
+            raise ValueError('Ugyldig hændelse i backup.')
+        if not timestamp(event['at']) or ('ended_at' in event and not timestamp(event['ended_at'])):
+            raise ValueError('Ugyldigt tidspunkt i backup.')
+        if ('notify_service' in event and not valid_target(event['notify_service'])) or ('notification_level' in event and event['notification_level'] not in ('normal', 'critical')) or ('duration' in event and (type(event['duration']) is not int or not 1 <= event['duration'] <= 3600)) or ('threshold_version' in event and (type(event['threshold_version']) is not int or event['threshold_version'] != 2)):
+            raise ValueError('Ugyldige alarmdata i backup.')
+    for key, event_id in log['active'].items():
+        if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{64}:(' + '|'.join(LABELS) + ')', key) or not isinstance(event_id, str) or len(event_id) > 200:
+            raise ValueError('Ugyldig aktiv alarm i backup.')
+    if any(not isinstance(k, str) or not re.fullmatch(r'[a-f0-9]{64}', k) or not timestamp(v) for k, v in log['sent'].items()):
+        raise ValueError('Ugyldig beskedhistorik i backup.')
+    return config, log
 
 
 def validate_config(value):
@@ -154,7 +184,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     last_test_at = None
 
     def snapshot():
-        selected = store.entity_ids() | {d.get('indicator', {}).get('entity_id') for d in store.config['devices']}
+        selected = store.entity_ids() | {d.get('indicator', {}).get(k) for d in store.config['devices'] for k in ('entity_id', 'brightness_entity_id')}
         states = {}
         for entity_id, state in ha.states.items():
             if entity_id in selected:
@@ -227,21 +257,56 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     async def config_get(request):
         return web.json_response(store.document())
 
+    async def validate_live_config(clean):
+        if any(d.get('indicator', {}).get('enabled') or d.get('indicator', {}).get('brightness_entity_id') for d in clean['devices']):
+            await ha.refresh_registries()
+            for device in clean['devices']:
+                if device.get('indicator', {}).get('enabled'):
+                    validate_binding(device, ha.registries, ha.states)
+                if device.get('indicator', {}).get('brightness_entity_id'):
+                    validate_brightness_binding(device, ha.registries, ha.states)
+        if any(d.get('alerts', {}).get('enabled') for d in clean['devices']):
+            targets = {x['id'] for x in await ha.notification_targets()}
+            if any(d.get('alerts', {}).get('enabled') and d['alerts']['notify_service'] not in targets for d in clean['devices']):
+                raise ValueError('Den valgte beskedmodtager findes ikke længere i Home Assistant.')
+
     async def config_put(request):
         value = await request.json()
         if not isinstance(value, dict):
             raise ValueError('Ugyldig konfiguration.')
         clean = validate_config(value.get('config'))
-        if any(d.get('indicator', {}).get('enabled') for d in clean['devices']):
-            await ha.refresh_registries()
-            for device in clean['devices']:
-                if device.get('indicator', {}).get('enabled'):
-                    validate_binding(device, ha.registries, ha.states)
-        if any(d.get('alerts', {}).get('enabled') for d in clean['devices']):
-            targets = {x['id'] for x in await ha.notification_targets()}
-            if any(d.get('alerts', {}).get('enabled') and d['alerts']['notify_service'] not in targets for d in clean['devices']):
-                raise ValueError('Den valgte beskedmodtager findes ikke længere i Home Assistant.')
+        await validate_live_config(clean)
         document = store.save(value.get('config'), value.get('revision'))
+        changed()
+        return web.json_response(document)
+
+    async def backup_get(request):
+        return web.json_response({'format': 'ESPHealth-backup', 'version': 1,
+                                  'config': store.config, 'alerts': alerts.document},
+                                 headers={'Content-Disposition': 'attachment; filename="ESPHealth-backup.json"'})
+
+    async def backup_import(request):
+        # Import is intentionally limited to a fresh installation. Existing data
+        # cannot be overwritten by a stale tab or an accidental file selection.
+        if store.revision != 0 or store.config['devices']:
+            raise web.HTTPConflict(text='Backup kan kun indlæses i en ny, tom installation.')
+        clean, log = validate_backup(await request.json())
+        await validate_live_config(clean)
+        if store.revision != 0 or store.config['devices']:
+            raise web.HTTPConflict(text='Installationen er ikke længere tom. Genindlæs appen.')
+        previous = alerts.document
+        # No awaits between the two writes: alarm evaluation cannot observe a
+        # partially imported configuration. A failed config write restores the log.
+        try:
+            alerts.document = log
+            alerts._save()
+            document = store.save(clean, 0)
+        except Exception:
+            alerts.document = previous
+            alerts._save()
+            raise
+        alerts.pending.clear()
+        alerts.rules = []
         changed()
         return web.json_response(document)
 
@@ -314,6 +379,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
                     web.get('/api/registry/{kind:device|entity|area}', registry_get),
                     web.get('/api/notification-targets', targets),
                     web.post('/api/notifications/test', test_notification),
+                    web.get('/api/backup', backup_get), web.post('/api/backup/import', backup_import),
                     web.post('/api/history', history), web.get('/', asset), web.get('/{name}', asset)])
     return app
 

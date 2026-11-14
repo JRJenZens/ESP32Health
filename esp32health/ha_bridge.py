@@ -5,7 +5,7 @@ import logging
 import time
 
 from alerts import valid_target
-from indicators import LED_OPTIONS, led_options, validate_binding
+from indicators import LED_OPTIONS, led_options, validate_binding, brightness_number, validate_brightness_binding, validate_indicator
 
 import aiohttp
 
@@ -26,14 +26,15 @@ def sensor_state(value):
         return None
     attrs = value.get('attributes') or {}
     indicator = entity_id.startswith('select.') and led_options(attrs.get('options'))
-    if not entity_id.startswith(('sensor.', 'binary_sensor.')) and not indicator:
+    brightness = brightness_number(entity_id)
+    if not entity_id.startswith(('sensor.', 'binary_sensor.')) and not indicator and not brightness:
         return None
     return {
         'entity_id': entity_id, 'state': value.get('state', 'unknown'),
         'last_updated': value.get('last_updated'),
         'last_changed': value.get('last_changed'),
         'last_reported': value.get('last_reported'),
-        'attributes': {k: attrs[k] for k in ('friendly_name', 'unit_of_measurement', 'device_class', *(('options',) if indicator else ())) if k in attrs},
+        'attributes': {k: attrs[k] for k in ('friendly_name', 'unit_of_measurement', 'device_class', *(('options',) if indicator else ()), *(('min', 'max', 'step') if brightness else ())) if k in attrs},
     }
 
 
@@ -44,7 +45,7 @@ def registry_rows(kind, values):
         'area': ('area_id', 'name'),
     }[kind]
     return [{k: row[k] for k in keys if k in row} for row in values
-            if kind != 'entity' or str(row.get('entity_id', '')).startswith(('sensor.', 'binary_sensor.', 'select.'))]
+            if kind != 'entity' or str(row.get('entity_id', '')).startswith(('sensor.', 'binary_sensor.', 'select.')) or brightness_number(row.get('entity_id'))]
 
 
 class HAUnavailable(Exception):
@@ -120,6 +121,15 @@ class HABridge:
         target = validate_binding(device, self.registries, self.states)
         await self._request({'type': 'call_service', 'domain': 'select', 'service': 'select_option',
                              'target': {'entity_id': target}, 'service_data': {'option': mode}})
+
+    async def set_indicator_brightness(self, device):
+        clean = validate_indicator(device.get('indicator'))
+        if 'brightness' not in clean:
+            raise ValueError('Missing LED brightness.')
+        await self.refresh_registries()
+        target = validate_brightness_binding(device, self.registries, self.states)
+        await self._request({'type': 'call_service', 'domain': 'number', 'service': 'set_value',
+                             'target': {'entity_id': target}, 'service_data': {'value': clean['brightness']}})
 
     async def _request(self, command):
         if self._ws is None or self._ws.closed:

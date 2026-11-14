@@ -83,7 +83,31 @@ test('LED selectors are restricted to compatible entities on the same physical r
 });
 test('Saving LED configuration preserves alarm settings',()=>{
  const original={...d,alerts:{...DEFAULT_ALERTS,heart_high:100}};let saved;
- const context={_config:{devices:[original]},_indicatorDrafts:{test:{enabled:true,entity_id:'select.radar_esphealth_led_status'}},_indicatorErrors:{},shadowRoot:{querySelectorAll:()=>[]},_commit:c=>{saved=c;}};
+ const context={_config:{devices:[original]},_indicatorDrafts:{test:{enabled:true,entity_id:'select.radar_esphealth_led_status'}},_indicatorErrors:{},_brightnessEntity:()=>'',shadowRoot:{querySelectorAll:()=>[]},_commit:c=>{saved=c;}};
  ESP32HealthDashboard.prototype._saveIndicator.call(context,'test');
  assert.equal(saved.devices[0].indicator.enabled,true);assert.deepEqual(saved.devices[0].alerts,original.alerts);
+});
+
+
+test('Brightness control belongs to the selected radar, and saving keeps numeric zero',()=>{
+ const target='number.radar_esphealth_led_lysstyrke';
+ const device={...d,indicator:{enabled:true,entity_id:'select.radar_esphealth_led_status'},alerts:{...DEFAULT_ALERTS,heart_high:100}};
+ const entries=[{entity_id:device.indicator.entity_id,device_id:'physical'}, {entity_id:target,device_id:'physical',platform:'esphome'}, {entity_id:'number.other_esphealth_led_lysstyrke',device_id:'other',platform:'esphome'}, {entity_id:'number.radar_sensitivity',device_id:'physical',platform:'esphome'}];
+ const context={_registries:{entities:entries}};
+ assert.equal(ESP32HealthDashboard.prototype._brightnessEntity.call(context,device),target);
+ let saved;
+ Object.assign(context,{_config:{devices:[device]},_indicatorDrafts:{},_indicatorErrors:{},_brightnessEntity:()=>target,shadowRoot:{querySelectorAll:()=>[{dataset:{device:'test',indicatorKey:'brightness'},type:'range',value:'0'}]},_commit:c=>{saved=c;}});
+ ESP32HealthDashboard.prototype._saveIndicator.call(context,'test');
+ assert.equal(saved.devices[0].indicator.brightness,0);
+ assert.equal(saved.devices[0].indicator.brightness_entity_id,target);
+ assert.deepEqual(saved.devices[0].alerts,device.alerts);
+});
+
+test('Brightness slider explains preserved color strengths and requires explicit save',()=>{
+ const device={...d,indicator:{enabled:true,entity_id:'select.radar_esphealth_led_status',brightness:35}};
+ const context={_indicatorDrafts:{},_indicatorErrors:{},_hass:{states:{}},_indicatorOptions:()=>[device.indicator.entity_id],_brightnessEntity:()=> 'number.radar_esphealth_led_lysstyrke'};
+ const html=ESP32HealthDashboard.prototype._indicatorPanel.call(context,device);
+ assert.match(html,/type="range" min="0" max="100" step="1" value="35"/);
+ assert.match(html,/Gem LED-indstillinger/);
+ assert.match(html,/100 % bevarer den nuværende styrke/);
 });

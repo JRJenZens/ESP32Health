@@ -2,15 +2,15 @@
 
 **ESPHealth installeres som en app under Indstillinger → Apps i Home Assistant**, på samme måde som ESPScripts. Appen åbnes med **Åbn web-UI** og kan vises i sidepanelet.
 
-[![Tilføj ESPHealth-app-repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health)
+[![Tilføj ESPHealth-app-repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESPHealth)
 
-[**Tilføj repository i Home Assistant**](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health) · [Dansk installationsvejledning](esp32health/DOCS.md)
+[**Tilføj repository i Home Assistant**](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESPHealth) · [Dansk installationsvejledning](esp32health/DOCS.md)
 
 ![ESPHealth — syntetiske testdata](docs/preview.png)
 
 ## Installation
 
-1. Åbn linket ovenfor og tilføj repository. Alternativt: **Indstillinger → Apps → App-butik → ⋮ → Repositories**, og tilføj `https://github.com/JRJenZens/ESP32Health`.
+1. Åbn linket ovenfor og tilføj repository. Alternativt: **Indstillinger → Apps → App-butik → ⋮ → Repositories**, og tilføj `https://github.com/JRJenZens/ESPHealth`.
 2. Find **ESPHealth**, og vælg **Installér**. Første installation bygger appen og kan tage nogle minutter.
 3. Vælg **Start** og derefter **Åbn web-UI**. Aktivér eventuelt **Vis i sidepanel**.
 4. Gå til **Enheder** i ESPHealth, og vælg **Find Seeed-enheder**, eller vælg **Vælg ESPHome-enhed** for at forbinde en fysisk enhed manuelt.

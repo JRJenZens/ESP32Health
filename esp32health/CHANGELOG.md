@@ -1,3 +1,11 @@
+# 0.5.1
+
+- GitHub-repository og installationslinks er flyttet til JRJenZens/ESPHealth.
+- Lokal backup og import til en ny, tom installation bevarer sensorkoblinger, alarmgrænser, LED-valg og alarmlog.
+- Aktive alarmers gentagelsesbeskyttelse bevares; ventende tidsperioder starter forfra.
+- Reguler LED-lysstyrke fra 0–100 % separat for hver radar. Indstillingen gemmes lokalt og gælder også ved forbindelsestab.
+- Kræver det opdaterede ESPHome-fragment med ESPHealth LED lysstyrke. Appens rettigheder er uændrede.
+
 # 0.5.0
 
 - Appen hedder nu ESPHealth i Home Assistant, brugerflade, beskeder og dokumentation.

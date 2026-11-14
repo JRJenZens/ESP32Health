@@ -8,6 +8,10 @@ let latest={connected:false,states:{}};
 let saveQueue=Promise.resolve();
 let generation=0;
 let pendingSaves=0;
+const backupFile=document.querySelector('#backup-file');
+const backupImport=document.querySelector('#backup-import');
+const backupStatus=document.querySelector('#backup-status');
+let emptyInstallation=false;
 const showError=message=>{errorBox.textContent=message;errorBox.hidden=!message;};
 async function api(path,options={}) {
   const response=await fetch(path,{...options,credentials:'same-origin',headers:{'X-ESP32Health':'1',...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
@@ -21,7 +25,22 @@ async function callWS(command) {
   throw new Error('Denne læseforespørgsel understøttes ikke.');
 }
 function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS,notificationTargets:()=>api('api/notification-targets'),testNotification:value=>api('api/notifications/test',{method:'POST',body:JSON.stringify(value)})};}
-async function loadConfig(){const document=await api('api/config');revision=document.revision;dashboard.setConfig(document.config);updateHass();}
+async function loadConfig(){const document=await api('api/config');revision=document.revision;emptyInstallation=revision===0&&document.config.devices.length===0;backupImport.disabled=!emptyInstallation||!backupFile.files.length;dashboard.setConfig(document.config);updateHass();}
+backupFile.addEventListener('change',()=>{backupImport.disabled=!emptyInstallation||!backupFile.files.length;backupStatus.textContent=emptyInstallation?'Filen indlæses først, når du trykker på Indlæs backup.':'Backup kan kun indlæses i en ny, tom installation.';});
+backupImport.addEventListener('click',async()=>{
+  if(!emptyInstallation||pendingSaves||!backupFile.files.length)return;
+  backupImport.disabled=true;
+  try{
+    const file=backupFile.files[0];
+    if(file.size>128*1024)throw new Error('Backupfilen er for stor. Højst 128 KB.');
+    const value=JSON.parse(await file.text());
+    await api('api/backup/import',{method:'POST',body:JSON.stringify(value)});
+    generation++;await loadConfig();
+    backupStatus.textContent='Backup indlæst. Enheder, indstillinger og hændelser er gendannet.';
+    saveStatus.textContent='Opsætning gemt';showError('');
+  }catch(error){backupStatus.textContent=error.message;}
+  finally{backupImport.disabled=!emptyInstallation||!backupFile.files.length;}
+});
 dashboard.addEventListener('esp32health-config-changed',event=>{
   const config=structuredClone(event.detail.config);
   const currentGeneration=generation;

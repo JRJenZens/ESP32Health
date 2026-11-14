@@ -1,6 +1,6 @@
 # ESPHealth installeres nu som Home Assistant-app
 
-[**Tilføj ESPHealth i din Home Assistant**](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health)
+[**Tilføj ESPHealth i din Home Assistant**](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESPHealth)
 
 Installér derefter **ESPHealth** under **Indstillinger → Apps → App-butik**, tryk **Start** og **Åbn web-UI**. Du kan slå **Vis i sidepanel** til, ligesom for ESPScripts.
 
