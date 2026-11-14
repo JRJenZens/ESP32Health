@@ -15,6 +15,7 @@ from aiohttp.test_utils import TestClient, TestServer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'esp32health'))
 from app import ConfigStore, SnapshotHub, STORE_KEY, create_app, history_command, validate_config
 from ha_bridge import HABridge, HAUnavailable, registry_rows, sensor_state
+from indicators import LED_OPTIONS, validate_binding
 
 CONFIG = {'title': 'Syntetiske testdata', 'devices': [
     {'id': 'test-bha', 'name': 'TEST · Soveværelse', 'area': 'Testområde', 'model': 'MR60BHA2', 'entities': {
@@ -49,6 +50,10 @@ class FakeBridge:
                        for d in CONFIG['devices'] for role, entity_id in d['entities'].items()],
             'area': [],
         }
+        for d in CONFIG['devices']:
+            entity_id = 'select.' + d['id'].replace('-', '_') + '_esphealth_led_status'
+            self.registries['entity'].append({'entity_id':entity_id,'device_id':d['id'],'platform':'esphome','original_name':'ESPHealth LED status'})
+            self.states[entity_id] = {'entity_id':entity_id,'state':'Slukket','attributes':{'friendly_name':'ESPHealth LED status','options':list(LED_OPTIONS)}}
 
     async def start(self):
         self.on_change()
@@ -69,6 +74,15 @@ class FakeBridge:
             raise HAUnavailable()
         return [{'id': 'persistent_notification.create', 'name': 'Home Assistant'},
                 {'id': 'notify.mobile_app_test', 'name': 'Synthetic phone'}]
+
+    async def set_indicator(self, device, mode):
+        if not self.connected:
+            raise HAUnavailable()
+        target = validate_binding(device,self.registries,self.states)
+        if mode not in LED_OPTIONS:
+            raise ValueError('Invalid LED mode')
+        self.commands.append({'type':'indicator','entity_id':target,'mode':mode})
+        self.states[target]['state'] = mode
 
     async def refresh_registries(self):
         if not self.connected:

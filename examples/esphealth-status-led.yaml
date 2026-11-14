@@ -1,0 +1,66 @@
+# ESPHealth status-LED fragment; merge into the existing device YAML.
+# Requires existing rgb_led (RGB light) and radar_presence (binary sensor) IDs.
+# Do not duplicate existing top-level select/globals/interval sections; merge lists.
+# Heartbeat arrives via HA from ESPHealth every 15 s; missing for 45 s => blue.
+# LED control is off until explicitly enabled in ESPHealth.
+
+globals:
+  - id: esphealth_led_enabled
+    type: bool
+    restore_value: true
+    initial_value: "false"
+  - id: esphealth_led_last_seen
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: esphealth_led_frame
+    type: int
+    restore_value: false
+    initial_value: "-1"
+
+select:
+  - platform: template
+    id: esphealth_led_status
+    name: "ESPHealth LED status"
+    entity_category: config
+    optimistic: true
+    restore_value: false
+    initial_option: Slukket
+    options:
+      - Auto
+      - Advarsel
+      - Kritisk
+      - Slukket
+    set_action:
+      - lambda: |-
+          id(esphealth_led_enabled) = (x != "Slukket");
+          id(esphealth_led_last_seen) = millis();
+          id(esphealth_led_frame) = -1;
+
+interval:
+  - interval: 500ms
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          int mode = 0;  // 0 off, 1 presence, 2 warning, 3 critical, 4 connection lost
+          if (id(esphealth_led_enabled)) {
+            if (id(esphealth_led_last_seen) == 0 ||
+                uint32_t(now - id(esphealth_led_last_seen)) > 45000U) mode = 4;
+            else if (id(esphealth_led_status).current_option() == "Kritisk") mode = 3;
+            else if (id(esphealth_led_status).current_option() == "Advarsel") mode = 2;
+            else if (id(radar_presence).has_state() && id(radar_presence).state) mode = 1;
+          }
+          const bool lit = mode == 1 || (mode >= 2 && ((now / 500U) % 2U == 0));
+          const int frame = mode * 2 + (lit ? 1 : 0);
+          if (frame == id(esphealth_led_frame)) return;
+          id(esphealth_led_frame) = frame;
+          auto call = id(rgb_led).make_call();
+          call.set_transition_length(0);
+          call.set_state(lit);
+          if (lit) {
+            call.set_rgb(mode == 2 || mode == 3 ? 1.0f : 0.0f,
+                         mode == 1 || mode == 2 ? 1.0f : 0.0f,
+                         mode == 4 ? 1.0f : 0.0f);
+            call.set_brightness(mode == 1 ? 0.20f : mode == 2 ? 0.35f : mode == 3 ? 0.50f : 0.25f);
+          }
+          call.perform();

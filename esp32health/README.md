@@ -1,4 +1,4 @@
-# ESP32Health
+# ESPHealth
 
 Home Assistant-app til Seeed MR60BHA2 og MR60FDA2 via ESPHome. Viser radar-estimeret puls og vejrtrækning, tilstedeværelse, afstand og faldsignal samt historik fra Recorder.
 

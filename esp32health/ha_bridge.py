@@ -5,6 +5,7 @@ import logging
 import time
 
 from alerts import valid_target
+from indicators import LED_OPTIONS, led_options, validate_binding
 
 import aiohttp
 
@@ -21,15 +22,18 @@ def sensor_state(value):
     if not isinstance(value, dict):
         return None
     entity_id = value.get('entity_id', '')
-    if not isinstance(entity_id, str) or not entity_id.startswith(('sensor.', 'binary_sensor.')):
+    if not isinstance(entity_id, str):
         return None
     attrs = value.get('attributes') or {}
+    indicator = entity_id.startswith('select.') and led_options(attrs.get('options'))
+    if not entity_id.startswith(('sensor.', 'binary_sensor.')) and not indicator:
+        return None
     return {
         'entity_id': entity_id, 'state': value.get('state', 'unknown'),
         'last_updated': value.get('last_updated'),
         'last_changed': value.get('last_changed'),
         'last_reported': value.get('last_reported'),
-        'attributes': {k: attrs[k] for k in ('friendly_name', 'unit_of_measurement', 'device_class') if k in attrs},
+        'attributes': {k: attrs[k] for k in ('friendly_name', 'unit_of_measurement', 'device_class', *(('options',) if indicator else ())) if k in attrs},
     }
 
 
@@ -40,7 +44,7 @@ def registry_rows(kind, values):
         'area': ('area_id', 'name'),
     }[kind]
     return [{k: row[k] for k in keys if k in row} for row in values
-            if kind != 'entity' or str(row.get('entity_id', '')).startswith(('sensor.', 'binary_sensor.'))]
+            if kind != 'entity' or str(row.get('entity_id', '')).startswith(('sensor.', 'binary_sensor.', 'select.'))]
 
 
 class HAUnavailable(Exception):
@@ -109,6 +113,14 @@ class HABridge:
             data['data'] = {'tag': 'esp32health_' + tag, 'push': push}
         await self._request({'type': 'call_service', 'domain': domain, 'service': action, 'service_data': data})
 
+    async def set_indicator(self, device, mode):
+        if mode not in LED_OPTIONS:
+            raise ValueError('Unknown LED mode.')
+        await self.refresh_registries()
+        target = validate_binding(device, self.registries, self.states)
+        await self._request({'type': 'call_service', 'domain': 'select', 'service': 'select_option',
+                             'target': {'entity_id': target}, 'service_data': {'option': mode}})
+
     async def _request(self, command):
         if self._ws is None or self._ws.closed:
             raise HAUnavailable('Home Assistant is disconnected.')
@@ -137,9 +149,13 @@ class HABridge:
         entity_id = data.get('entity_id', '')
         value = sensor_state(data.get('new_state'))
         if value:
+            changed = self.states.get(entity_id) != value
             self.states[entity_id] = value
+            return changed
         elif entity_id in self.states:
             del self.states[entity_id]
+            return True
+        return False
 
     async def _reader(self):
         async for message in self._ws:
@@ -158,8 +174,8 @@ class HABridge:
                 if self._buffer is not None:
                     self._buffer.append(event)
                 else:
-                    self._apply(event)
-                    self.on_change()
+                    if self._apply(event):
+                        self.on_change()
         raise HAUnavailable('Home Assistant connection closed.')
 
     async def _connect(self, session):

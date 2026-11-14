@@ -10,7 +10,7 @@ The Home Assistant app assumes both kits already run ESPHome and are added to Ho
 
 FDA2 installation height, sensitivity and height threshold affect detection. Configure these in ESPHome/Home Assistant according to the physical installation. This preview displays sensor data and does not write calibration settings or factory-reset devices.
 
-BHA2 vital estimates require one still person and a stable radar. Seeed documents a core zone of 0.5–1.5 m. A radar can hold the last estimate when the target leaves its effective range; non-zero heart estimates may also occur from interference. Its estimated target count is experimental. Consequently, ESP32Health checks the available conditions but cannot verify the observation. Two radars detecting presence do not imply two different people.
+BHA2 vital estimates require one still person and a stable radar. Seeed documents a core zone of 0.5–1.5 m. A radar can hold the last estimate when the target leaves its effective range; non-zero heart estimates may also occur from interference. Its estimated target count is experimental. Consequently, ESPHealth checks the available conditions but cannot verify the observation. Two radars detecting presence do not imply two different people.
 
 The default ESPHome BHA2 distance unit is **cm**, not m. The display converts using the entity's `unit_of_measurement`. Never set a distance conversion by guessing the entity name.
 

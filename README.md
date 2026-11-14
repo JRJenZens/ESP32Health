@@ -1,19 +1,19 @@
-# ESP32Health til Home Assistant
+# ESPHealth til Home Assistant
 
-**ESP32Health installeres som en app under Indstillinger → Apps i Home Assistant**, på samme måde som ESPScripts. Appen åbnes med **Åbn web-UI** og kan vises i sidepanelet.
+**ESPHealth installeres som en app under Indstillinger → Apps i Home Assistant**, på samme måde som ESPScripts. Appen åbnes med **Åbn web-UI** og kan vises i sidepanelet.
 
-[![Tilføj ESP32Health-app-repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health)
+[![Tilføj ESPHealth-app-repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health)
 
 [**Tilføj repository i Home Assistant**](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FJRJenZens%2FESP32Health) · [Dansk installationsvejledning](esp32health/DOCS.md)
 
-![ESP32Health — syntetiske testdata](docs/preview.png)
+![ESPHealth — syntetiske testdata](docs/preview.png)
 
 ## Installation
 
 1. Åbn linket ovenfor og tilføj repository. Alternativt: **Indstillinger → Apps → App-butik → ⋮ → Repositories**, og tilføj `https://github.com/JRJenZens/ESP32Health`.
-2. Find **ESP32Health**, og vælg **Installér**. Første installation bygger appen og kan tage nogle minutter.
+2. Find **ESPHealth**, og vælg **Installér**. Første installation bygger appen og kan tage nogle minutter.
 3. Vælg **Start** og derefter **Åbn web-UI**. Aktivér eventuelt **Vis i sidepanel**.
-4. Gå til **Enheder** i ESP32Health, og vælg **Find Seeed-enheder**, eller vælg **Vælg ESPHome-enhed** for at forbinde en fysisk enhed manuelt.
+4. Gå til **Enheder** i ESPHealth, og vælg **Find Seeed-enheder**, eller vælg **Vælg ESPHome-enhed** for at forbinde en fysisk enhed manuelt.
 5. Kontrollér entiteterne. Opsætningen gemmes automatisk i appen og bruges på tværs af dine enheder.
 
 Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne skal allerede være tilføjet til Home Assistant via ESPHome. Der skal ikke indtastes URL, adgangstoken eller opsættes et dashboardkort. Den aktuelle app retter sig mod HA-administratorer.
@@ -32,7 +32,25 @@ Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne 
 
 Appen bruger Home Assistants interne API gennem Supervisor. Login og adgang til web-UI håndteres gennem Ingress. Opsætningen ligger i appens private `/data/config.json` og følger med en sikkerhedskopi af appen. Målehistorik bliver i Home Assistant Recorder; Appen gemmer en lokal log over de seneste 50 alarmhændelser i `/data/alerts.json`. [Teknisk dokumentation om Ingress](https://contributors.home-assistant.io/apps/guides/ingress/).
 
+## Status-LED på radaren
+
+Installér [ESPHome-fragmentet til status-LED](examples/esphealth-status-led.yaml) på hver radar, og vælg **Enheder → Status-LED** i ESPHealth. Vælg **ESPHealth LED status** fra samme fysiske radar, markér **Brug radarens LED til ESPHealth-status**, og tryk **Gem LED-indstillinger**. Enheds- og sensorkoblinger gemmes fortsat automatisk; LED-valget gemmes med sin egen knap.
+
+| Visning | Betydning |
+| --- | --- |
+| Svagt konstant grønt | Radaren registrerer en person |
+| Gult blink | En konfigureret almindelig alarm er aktiv |
+| Rødt blink | En konfigureret kritisk alarm er aktiv |
+| Blåt blink | Ingen statusopdatering via HA/ESPHealth i 45 sekunder |
+| Slukket | Ingen person, eller LED-styring slået fra |
+
+Grønt betyder tilstedeværelse, ikke at sundhedsværdier er normale. Rød har prioritet over gul. Afventende alarmtimere giver ikke alarmfarver. Blinket kører lokalt med cirka én periode pr. sekund; appen sender status hvert 15. sekund, også når sensorværdierne ikke ændrer sig. Hvis HA eller appen stopper, viser den lokale watchdog blåt efter timeout. Aktiveringen gemmes lokalt; en gammel alarmfarve genoptages ikke som en ny alarm ved genstart.
+
+Appen styrer kun en kompatibel LED-vælger på samme fysiske ESPHome-enhed som sensorernes registrering. Den har ingen generisk styring af lys, radar-kalibrering eller vilkårlige select-entiteter. Fragmentet kræver eksisterende IDs `rgb_led` og `radar_presence`; følg kommentarerne i filen og flet lister ind i den eksisterende YAML. Sensor- og netværksopsætning skal bevares. Byg og validér i ESPHome før installation.
+
 ## Valgfrie alarmregler
+
+Alarmstatus og seneste hændelser står nederst, så indstillingerne er direkte tilgængelige øverst.
 
 Åbn **Alarmer**, vælg modtager og dine egne grænser, markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Alt er slået fra ved installation; tomme grænser betyder ingen regel. Regler kører i appen, også når web-UI er lukket, og kræver en kørende app og Home Assistant.
 
@@ -54,7 +72,7 @@ Appen er ikke en medicinsk alarm eller et nødopkaldssystem. Vælg grænser efte
 
 ## Overgang fra version 0.1
 
-Fra **0.2.0** distribueres ESP32Health kun som Home Assistant-app. Hvis du har installeret dashboardkortet gennem Marketplace/HACS, kan du fjerne det gamle kort og dets ressource og afinstallere den gamle pakke. Tilføj derefter dette repository under **Apps**. Sensorerne i ESPHome/Home Assistant skal bevares.
+Fra **0.2.0** distribueres ESPHealth kun som Home Assistant-app. Hvis du har installeret dashboardkortet gennem Marketplace/HACS, kan du fjerne det gamle kort og dets ressource og afinstallere den gamle pakke. Tilføj derefter dette repository under **Apps**. Sensorerne i ESPHome/Home Assistant skal bevares.
 
 Den nye app har sin egen centrale opsætning. Tidligere browser- eller kortopsætninger flyttes ikke automatisk; vælg enhederne igen i appen. Historik, der ligger i Recorder, bliver bevaret. De tidligere 0.1-udgivelser findes fortsat som versionshistorik på GitHub.
 
@@ -64,7 +82,7 @@ Aktuelle BHA2-vitalestimater vises kun ved registreret tilstedeværelse, ét est
 
 `last_reported` bruges, hvis det er tilgængeligt, ellers `last_updated`. Stabilt gentagne tal kan derfor blive skjult konservativt. `force_update` på de numeriske ESPHome-sensorer kan hjælpe med opdateringstider, men kan øge Recorder-skrivninger og beviser ikke, at radarens estimat er nyt. Se [ESPHome-fragmenter](examples/esphome-entities.yaml).
 
-Sensorerne kan fastholde gamle estimater, og appen kan ikke bekræfte stilleståen eller signalets kvalitet. Historik og CSV viser rå Recorder-værdier. ESP32Health er ikke medicinsk udstyr eller et certificeret alarmsystem og kan sende vejledende beskeder efter dine egne regler. Manglende signal dokumenterer ikke vejrtrækningsstop. [Enhedsnoter og kilder](docs/devices.md).
+Sensorerne kan fastholde gamle estimater, og appen kan ikke bekræfte stilleståen eller signalets kvalitet. Historik og CSV viser rå Recorder-værdier. ESPHealth er ikke medicinsk udstyr eller et certificeret alarmsystem og kan sende vejledende beskeder efter dine egne regler. Manglende signal dokumenterer ikke vejrtrækningsstop. [Enhedsnoter og kilder](docs/devices.md).
 
 ## Udvikling og afprøvning
 

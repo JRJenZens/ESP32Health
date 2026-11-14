@@ -204,8 +204,8 @@ class AlertEngine:
         self.on_change()
         try:
             critical = settings['notification_level'] == 'critical'
-            title = 'ESP32Health · ' + ('Kritisk testbesked' if critical else 'Testbesked')
-            message = 'Dette er en test fra ESP32Health. Ingen sundhedsalarm er udløst. Bekræft, at beskeden vises' + (' og afspiller kritisk lyd på telefonen.' if critical else '.')
+            title = 'ESPHealth · ' + ('Kritisk testbesked' if critical else 'Testbesked')
+            message = 'Dette er en test fra ESPHealth. Ingen sundhedsalarm er udløst. Bekræft, at beskeden vises' + (' og afspiller kritisk lyd på telefonen.' if critical else '.')
             await asyncio.wait_for(self.notify(settings['notify_service'], title, message,
                                                event['id'], settings['notification_level']), timeout=12)
             event['delivery'] = 'sent'
@@ -273,7 +273,7 @@ class AlertEngine:
                                 if rule == 'signal_loss':
                                     message += ' Manglende signal dokumenterer ikke vejrtrækningsstop.'
                                 tag = hashlib.sha256(key.encode()).hexdigest()[:20]
-                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESP32Health · '+LABELS[rule], message, tag, level), timeout=12)
+                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESPHealth · '+LABELS[rule], message, tag, level), timeout=12)
                                 event['delivery'] = 'sent'
                             except (Exception,):
                                 # No payload or health data in logs. Failure is visible in the local log.

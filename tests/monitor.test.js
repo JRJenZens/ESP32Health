@@ -69,3 +69,21 @@ test('Explicit test priority does not change a saved alarm or its durations',asy
  assert.equal(requests[0].notification_level,'critical');assert.equal(original.notification_level,'normal');
  clearTimeout(context._testCooldownTimer);
 });
+
+test('Alarm configuration comes before status and recent events',()=>{
+ const context={_config:{devices:[d]},_hass:{},_alarmStatus:()=>'<p>EVENT LOG</p>',_alertDrafts:{},_testMessages:{},_targetOptions:()=>'',_thresholdEditor:()=>'<p>THRESHOLDS</p>'};
+ const html=ESP32HealthDashboard.prototype._alarms.call(context);
+ assert.ok(html.indexOf('THRESHOLDS')<html.indexOf('id="alarm-status"'));
+ assert.ok(html.indexOf('data-action="save-alerts"')<html.indexOf('EVENT LOG'));
+});
+test('LED selectors are restricted to compatible entities on the same physical radar',()=>{
+ const entries=[{entity_id:'sensor.h',device_id:'physical'}, {entity_id:'select.radar_esphealth_led_status',device_id:'physical',platform:'esphome',original_name:'ESPHealth LED status'}, {entity_id:'select.other_esphealth_led_status',device_id:'other',platform:'esphome',original_name:'ESPHealth LED status'}, {entity_id:'select.radar_height',device_id:'physical',platform:'esphome',original_name:'Height'}];
+ const context={_registries:{entities:entries,devices:[]}};
+ assert.deepEqual(ESP32HealthDashboard.prototype._indicatorOptions.call(context,d),['select.radar_esphealth_led_status']);
+});
+test('Saving LED configuration preserves alarm settings',()=>{
+ const original={...d,alerts:{...DEFAULT_ALERTS,heart_high:100}};let saved;
+ const context={_config:{devices:[original]},_indicatorDrafts:{test:{enabled:true,entity_id:'select.radar_esphealth_led_status'}},_indicatorErrors:{},shadowRoot:{querySelectorAll:()=>[]},_commit:c=>{saved=c;}};
+ ESP32HealthDashboard.prototype._saveIndicator.call(context,'test');
+ assert.equal(saved.devices[0].indicator.enabled,true);assert.deepEqual(saved.devices[0].alerts,original.alerts);
+});

@@ -1,4 +1,4 @@
-"""ESP32Health Home Assistant app, served exclusively through Ingress."""
+"""ESPHealth Home Assistant app, served exclusively through Ingress."""
 import asyncio
 import contextlib
 import json
@@ -13,8 +13,9 @@ from aiohttp import web
 
 from ha_bridge import HABridge, HAUnavailable
 from alerts import AlertEngine, validate_alerts
+from indicators import IndicatorController, validate_indicator, validate_binding
 
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},
@@ -34,7 +35,7 @@ def validate_config(value):
         raise ValueError('Titlen er for lang eller ugyldig.')
     if type(result['stale_after']) not in (int, float) or not 30 <= result['stale_after'] <= 86400:
         raise ValueError('stale_after skal være mellem 30 og 86400 sekunder.')
-    seen = set()
+    seen, indicator_ids = set(), set()
     for device in value['devices']:
         if not isinstance(device, dict):
             raise ValueError('Enheden skal være et objekt.')
@@ -54,6 +55,13 @@ def validate_config(value):
         row['entities'] = dict(entities)
         if 'alerts' in device:
             row['alerts'] = validate_alerts(device['alerts'], row['model'])
+        if 'indicator' in device:
+            row['indicator'] = validate_indicator(device['indicator'])
+            target = row['indicator']['entity_id']
+            if target and target in indicator_ids:
+                raise ValueError('Samme status-LED kan kun forbindes med én radar.')
+            if target:
+                indicator_ids.add(target)
         result['devices'].append(row)
     return result
 
@@ -114,6 +122,7 @@ STORE_KEY = web.AppKey('store', ConfigStore)
 BRIDGE_KEY = web.AppKey('bridge', object)
 HUB_KEY = web.AppKey('hub', SnapshotHub)
 ALERTS_KEY = web.AppKey('alerts', AlertEngine)
+INDICATORS_KEY = web.AppKey('indicators', IndicatorController)
 
 def history_command(value, allowed_ids):
     if not isinstance(value, dict):
@@ -141,10 +150,11 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     hub = SnapshotHub()
     ha = bridge if bridge is not None else HABridge(token or os.environ.get('SUPERVISOR_TOKEN', ''))
     alerts = AlertEngine(Path(config_path).with_name('alerts.json'), ha.notify)
+    indicators = IndicatorController(ha, lambda: store.config, lambda: alerts.rules)
     last_test_at = None
 
     def snapshot():
-        selected = store.entity_ids()
+        selected = store.entity_ids() | {d.get('indicator', {}).get('entity_id') for d in store.config['devices']}
         states = {}
         for entity_id, state in ha.states.items():
             if entity_id in selected:
@@ -153,7 +163,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
                 # Manual selectors need names/units, not unrelated sensor values.
                 states[entity_id] = {'entity_id': entity_id, 'state': 'unknown',
                                      'attributes': state.get('attributes', {})}
-        return {'connected': ha.connected, 'states': states, 'alerts': alerts.snapshot()}
+        return {'connected': ha.connected, 'states': states, 'alerts': alerts.snapshot(), 'indicators': indicators.snapshot()}
 
     last_snapshot = None
 
@@ -182,8 +192,10 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     app = web.Application(middlewares=[protect], client_max_size=128 * 1024)
     app[STORE_KEY], app[BRIDGE_KEY], app[HUB_KEY] = store, ha, hub
     app[ALERTS_KEY] = alerts
+    app[INDICATORS_KEY] = indicators
     ha.on_change = changed
     alerts.on_change = changed
+    indicators.on_change = changed
 
     async def headers(request, response):
         response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -196,10 +208,12 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     async def lifecycle(application):
         await ha.start()
         alerts.start(lambda: store.config, ha)
+        indicators.start()
         try:
             yield
         finally:
             hub.publish(None)
+            await indicators.close()
             await alerts.close()
             await ha.close()
 
@@ -218,6 +232,11 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
         if not isinstance(value, dict):
             raise ValueError('Ugyldig konfiguration.')
         clean = validate_config(value.get('config'))
+        if any(d.get('indicator', {}).get('enabled') for d in clean['devices']):
+            await ha.refresh_registries()
+            for device in clean['devices']:
+                if device.get('indicator', {}).get('enabled'):
+                    validate_binding(device, ha.registries, ha.states)
         if any(d.get('alerts', {}).get('enabled') for d in clean['devices']):
             targets = {x['id'] for x in await ha.notification_targets()}
             if any(d.get('alerts', {}).get('enabled') and d['alerts']['notify_service'] not in targets for d in clean['devices']):
@@ -302,5 +321,5 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     if not os.environ.get('SUPERVISOR_TOKEN'):
-        raise SystemExit('ESP32Health skal startes som app i Home Assistant.')
+        raise SystemExit('ESPHealth skal startes som app i Home Assistant.')
     web.run_app(create_app(), host='0.0.0.0', port=8099, access_log=None, shutdown_timeout=5)

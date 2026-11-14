@@ -1,10 +1,10 @@
-# ESP32Health — kom i gang
+# ESPHealth — kom i gang
 
 ## Installér fra GitHub under Apps
 
 1. Åbn **Indstillinger → Apps → App-butik** i Home Assistant.
 2. Vælg **⋮ → Repositories** og tilføj `https://github.com/JRJenZens/ESP32Health`.
-3. Find **ESP32Health**, og tryk **Installér**. Første installation bygger appen og kan tage nogle minutter.
+3. Find **ESPHealth**, og tryk **Installér**. Første installation bygger appen og kan tage nogle minutter.
 4. Tryk **Start** og **Åbn web-UI**.
 5. Slå eventuelt **Vis i sidepanel** og **Start ved opstart** til.
 
@@ -21,6 +21,20 @@ Appen foreslår sensorkoblinger fra netop den valgte enhed. Den genbruger en all
 Opsætningen gemmes automatisk. Vent på **Opsætning gemt** øverst, før du lukker appen. Den samme opsætning bruges fra computer, mobil og tablet og overlever en genstart af appen.
 
 Hvis en anden fane gemmer først, genindlæses den gemte opsætning. Foretag din ændring igen, så du ikke overskriver andre ændringer ved en fejl.
+
+## Status-LED
+
+Installér status-LED-opsætningen fra repositoryets `examples/esphealth-status-led.yaml` i ESPHome på hver radar. Bevar de eksisterende sensor-, netværks- og LED-definitioner, og flet lister i stedet for at oprette dublerede YAML-nøgler. Fragmentet bruger IDs `rgb_led` og `radar_presence` og skal valideres og bygges før installation.
+
+Åbn **Enheder**, vælg **ESPHealth LED status** under den rette radar, markér **Brug radarens LED til ESPHealth-status**, og tryk **Gem LED-indstillinger**. Listen er begrænset til samme fysiske enhed. Slå valget fra og gem for at deaktivere statusvisningen.
+
+- Svagt grønt: en person er registreret. Det er ikke en vurdering af sundhed.
+- Gult blink: almindelig alarm er aktiv.
+- Rødt blink: kritisk alarm er aktiv og har prioritet over gul.
+- Blåt blink: radaren har ikke modtaget status fra HA/ESPHealth i 45 sekunder.
+- Slukket: ingen person, eller status-LED er deaktiveret.
+
+Appen sender en statusopdatering hvert 15. sekund; radaren styrer selv farver, blink, tilstedeværelse og forbindelsestimeout. LED-farverne følger aktive alarmregler, ikke en endnu afventende timer. Ved stop eller opdatering af appen kan blåt vise manglende opdateringer. En firmwaregenstart afventer friske opdateringer frem for at genoptage en gammel alarmfarve.
 
 ## Historik
 
@@ -45,6 +59,8 @@ Den mørke monitor viser estimerede frekvenser. Animationen følger frekvensen o
 MR60BHA2 skal have én person i ro og korrekt afstand. Appen kræver positive og nylige tal samt en estimeret afstand på 0,5–1,5 m for at vise aktuelle vitalestimater. Radaren kan fastholde et gammelt estimat; opdateringstid er ikke en garanti for målekvalitet.
 
 MR60FDA2 skal være monteret og kalibreret korrekt i ESPHome/Home Assistant. Appen ændrer ikke højde, følsomhed, firmware eller andre fysiske indstillinger.
+
+På **Alarmer** står indstillingerne først og alarmstatus samt seneste hændelser nederst.
 
 Under **Alarmer** kan hver BHA2-radar få separate grænser for **Puls** og **Vejrtrækning**, både **Under grænsen** og **Over grænsen**.
 
@@ -72,6 +88,8 @@ Alarmkontrollen kræver, at appen og Home Assistant kører. Stop, opdatering, ge
 Tidligere grænser fra 0.3 overføres med samme værdi, tid, modtager og aktivering til det tilsvarende almindelige eller kritiske niveau. Ingen nye grænser vælges automatisk. Gennemgå felterne efter opdateringen. Gendan en fuld backup af tidligere version og opsætning, hvis du ruller tilbage til 0.3.
 
 ## Opdatering og backup
+
+Eksisterende ESP32Health-installationer opdateres til navnet **ESPHealth** gennem den samme app, og opsætningen følger med.
 
 Opdater via appens side i Home Assistant, når en ny version vises. Ved behov vælges **Søg efter opdateringer** i app-butikken. Opsætningen ligger i `/data/config.json`, den lokale alarmlog i `/data/alerts.json`, og begge følger med en backup af appen. Målehistorikken ligger fortsat i Home Assistant Recorder.
 

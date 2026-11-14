@@ -1,3 +1,14 @@
+# 0.5.0
+
+- Appen hedder nu ESPHealth i Home Assistant, brugerflade, beskeder og dokumentation.
+- Alarmstatus og seneste hændelser er flyttet ned under indstillingerne.
+- Status-LED kan forbindes og aktiveres separat for hver radar under Enheder.
+- Svagt grønt ved tilstedeværelse, gult blink ved almindelig alarm og rødt blink ved kritisk alarm.
+- Lokal watchdog giver blåt blink efter 45 sekunder uden opdatering fra HA/ESPHealth.
+- Afgrænset LED-styring med fysisk enhedstjek og fire faste tilstande.
+- ESPHome-fragment til de eksisterende RGB-LED- og tilstedeværelseskomponenter.
+- Eksisterende sensor- og alarmindstillinger bevares ved opdatering.
+
 # 0.4.0
 
 - Separate alarm- og kritiske grænser for høj/lav puls og vejrtrækning.
@@ -42,7 +53,7 @@
 
 # 0.2.0
 
-- ESP32Health er nu en Home Assistant-app, som installeres under Apps ligesom ESPScripts.
+- ESPHealth er nu en Home Assistant-app, som installeres under Apps ligesom ESPScripts.
 - Automatisk intern forbindelse til Home Assistant og adgang gennem Ingress.
 - Åbn web-UI og mulighed for genvej i sidepanelet.
 - Central og vedvarende enhedsopsætning med beskyttelse mod overskrivning fra flere faner.
