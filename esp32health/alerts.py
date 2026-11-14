@@ -13,10 +13,30 @@ from pathlib import Path
 DEFAULT_ALERTS = {'enabled': False, 'heart_low': None, 'heart_high': None,
                   'breath_low': None, 'breath_high': None, 'signal_loss': False,
                   'fall': False, 'delay': 30, 'notify_service': 'persistent_notification.create',
-                  'notification_level': 'normal'}
+                  'notification_level': 'normal', 'threshold_version': 2}
+THRESHOLD_RULES = ('heart_low', 'heart_high', 'breath_low', 'breath_high')
+for _rule in THRESHOLD_RULES:
+    DEFAULT_ALERTS['critical_' + _rule] = None
+ALERT_KEYS = set(DEFAULT_ALERTS) | {prefix + rule + '_delay' for rule in THRESHOLD_RULES for prefix in ('', 'critical_')}
 LABELS = {'heart_low': 'Puls under din grænse', 'heart_high': 'Puls over din grænse',
           'breath_low': 'Vejrtrækning under din grænse', 'breath_high': 'Vejrtrækning over din grænse',
           'signal_loss': 'Målesignal mangler', 'fall': 'Muligt fald registreret'}
+LABELS.update({'critical_' + key: 'Kritisk ' + LABELS[key][0].lower() + LABELS[key][1:]
+               for key in THRESHOLD_RULES})
+
+
+def normalize_alerts(value):
+    """Migrate old one-level rules without changing their values, delays or priority."""
+    result = {**DEFAULT_ALERTS, **value}
+    legacy = 'threshold_version' not in value and not any(k.startswith('critical_') or k.endswith('_delay') for k in value)
+    for rule in THRESHOLD_RULES:
+        result[rule + '_delay'] = value.get(rule + '_delay', result['delay'])
+        result['critical_' + rule + '_delay'] = value.get('critical_' + rule + '_delay', result['delay'])
+        if legacy and result['notification_level'] == 'critical':
+            result['critical_' + rule] = result[rule]
+            result[rule] = None
+    result['threshold_version'] = 2
+    return result
 
 
 def valid_target(service):
@@ -25,9 +45,11 @@ def valid_target(service):
 
 
 def validate_alerts(value, model):
-    if not isinstance(value, dict) or value.keys() - DEFAULT_ALERTS.keys():
+    if not isinstance(value, dict) or value.keys() - ALERT_KEYS:
         raise ValueError('Ukendte alarmindstillinger.')
-    result = {**DEFAULT_ALERTS, **value}
+    if 'threshold_version' in value and (type(value['threshold_version']) is not int or value['threshold_version'] != 2):
+        raise ValueError('Ukendt version af alarmgrænser.')
+    result = normalize_alerts(value)
     for key in ('enabled', 'signal_loss', 'fall'):
         if type(result[key]) is not bool:
             raise ValueError('Alarmvalg skal være slået til eller fra.')
@@ -35,24 +57,30 @@ def validate_alerts(value, model):
         raise ValueError('Vælg Home Assistant eller en Companion-app som beskedmodtager.')
     if result['notification_level'] not in ('normal', 'critical'):
         raise ValueError('Vælg almindelig eller kritisk besked.')
-    if result['notification_level'] == 'critical' and result['notify_service'] == 'persistent_notification.create':
+    if (result['notification_level'] == 'critical' or any(result['critical_' + k] is not None for k in THRESHOLD_RULES)) and result['notify_service'] == 'persistent_notification.create':
         raise ValueError('Vælg en telefon eller tablet for at sende en kritisk besked.')
-    if type(result['delay']) is not int or not 5 <= result['delay'] <= 600:
-        raise ValueError('Alarmforsinkelsen skal være 5–600 sekunder.')
-    for key in ('heart_low', 'heart_high', 'breath_low', 'breath_high'):
+    for key in ('delay',) + tuple(k + '_delay' for k in THRESHOLD_RULES) + tuple('critical_' + k + '_delay' for k in THRESHOLD_RULES):
+        if type(result[key]) is not int or not 1 <= result[key] <= 3600:
+            raise ValueError('Varigheden skal være et helt antal sekunder mellem 1 og 3600.')
+    for key in THRESHOLD_RULES + tuple('critical_' + k for k in THRESHOLD_RULES):
         n = result[key]
-        maximum = 300 if key.startswith('heart') else 100
+        maximum = 300 if 'heart' in key else 100
         if n is not None and (type(n) not in (int, float) or not math.isfinite(n) or not 0 < n <= maximum):
             raise ValueError('Alarmgrænser skal være positive tal inden for feltets interval.')
         if model != 'MR60BHA2' and n is not None:
             raise ValueError('Puls- og vejrtrækningsalarmer kræver MR60BHA2.')
     for role in ('heart', 'breath'):
-        low, high = result[role+'_low'], result[role+'_high']
-        if low is not None and high is not None and low >= high:
+        lows = [result[prefix + role + '_low'] for prefix in ('', 'critical_') if result[prefix + role + '_low'] is not None]
+        highs = [result[prefix + role + '_high'] for prefix in ('', 'critical_') if result[prefix + role + '_high'] is not None]
+        if lows and highs and max(lows) >= min(highs):
             raise ValueError('Den nedre grænse skal være lavere end den øvre.')
+    for rule in THRESHOLD_RULES:
+        alarm, critical = result[rule], result['critical_' + rule]
+        if alarm is not None and critical is not None and (critical > alarm if rule.endswith('low') else critical < alarm):
+            raise ValueError('Den kritiske grænse skal ligge mindst lige så langt uden for normalområdet som alarmgrænsen.')
     if model != 'MR60FDA2' and result['fall']:
         raise ValueError('Faldalarm kræver MR60FDA2.')
-    if result['enabled'] and not any(result[k] is not None for k in ('heart_low', 'heart_high', 'breath_low', 'breath_high')) and not result['signal_loss'] and not result['fall']:
+    if result['enabled'] and not any(result[k] is not None for k in THRESHOLD_RULES + tuple('critical_' + k for k in THRESHOLD_RULES)) and not result['signal_loss'] and not result['fall']:
         raise ValueError('Vælg mindst én alarmregel, før du aktiverer alarmer.')
     return result
 
@@ -102,18 +130,18 @@ def quality(device, states, connected, now, stale_after):
 
 
 def conditions(device, states, connected, now, stale_after):
-    a = {**DEFAULT_ALERTS, **device.get('alerts', {})}
+    a = normalize_alerts(device.get('alerts', {}))
     if not a['enabled']:
         return {}
     result = {}
     if device['model'] == 'MR60BHA2':
         q = quality(device, states, connected, now, stale_after)
-        for key in ('heart_low', 'heart_high', 'breath_low', 'breath_high'):
+        for key in THRESHOLD_RULES + tuple('critical_' + k for k in THRESHOLD_RULES):
             if a[key] is None:
                 continue
-            n = q['heart_rate' if key.startswith('heart') else 'breath_rate']
+            n = q['heart_rate' if 'heart' in key else 'breath_rate']
             abnormal = n is not None and (n < a[key] if key.endswith('low') else n > a[key])
-            unit = 'slag/min' if key.startswith('heart') else 'åndedrag/min'
+            unit = 'slag/min' if 'heart' in key else 'åndedrag/min'
             result[key] = (f'{n:g} {unit}; din grænse er {a[key]:g}.' if abnormal else None,
                            n is not None)
         if a['signal_loss']:
@@ -193,32 +221,46 @@ class AlertEngine:
         now = time.time() if now is None else now
         current, rules, dirty = set(), [], False
         for device in config['devices']:
-            settings = {**DEFAULT_ALERTS, **device.get('alerts', {})}
+            settings = normalize_alerts(device.get('alerts', {}))
             fingerprint = hashlib.sha256(json.dumps([device['id'], device['entities'], settings], sort_keys=True).encode()).hexdigest()
-            for rule, (reason, measurable) in conditions(device, states, connected, now, config.get('stale_after', 180)).items():
+            checks = conditions(device, states, connected, now, config.get('stale_after', 180))
+            # Evaluate critical first: an escalation can never be blocked by an ordinary alert.
+            for rule in sorted(checks, key=lambda k: not k.startswith('critical_')):
+                reason, measurable = checks[rule]
                 key = fingerprint + ':' + rule
                 current.add(key)
+                is_threshold = rule in THRESHOLD_RULES or rule.startswith('critical_')
+                level = ('critical' if rule.startswith('critical_') else 'normal') if is_threshold else settings['notification_level']
+                duration = settings[rule + '_delay'] if is_threshold else settings['delay']
                 row = {'device_id': device['id'], 'rule': rule, 'label': LABELS[rule],
-                       'state': 'watching' if measurable else 'paused', 'reason': reason}
+                       'state': 'watching' if measurable else 'paused', 'reason': reason,
+                       'notification_level': level, 'delay': duration}
                 if reason:
                     self.pending.setdefault(key, now)
                     row.update(state='pending', since=self.pending[key])
-                    if key in self.document['active']:
+                    critical_rule = 'critical_' + rule
+                    covered = rule in THRESHOLD_RULES and checks.get(critical_rule, (None, False))[0] and fingerprint + ':' + critical_rule in self.document['active']
+                    if covered:
+                        row['state'] = 'covered'
+                    elif key in self.document['active']:
                         row['state'] = 'active'
-                    elif now - self.pending[key] >= settings['delay']:
+                    elif now - self.pending[key] >= duration:
                         row['state'] = 'active'
                         event = {'id': f'{key[:12]}-{rule}-{int(now*1000)}', 'device_id': device['id'],
                                  'name': device['name'], 'rule': rule, 'label': LABELS[rule],
                                  'at': now, 'reason': reason, 'delivery': 'pending',
-                                 'notification_level': settings['notification_level'],
+                                 'notification_level': level, 'duration': duration, 'threshold_version': 2,
                                  'notify_service': settings['notify_service']}
                         self.document['events'].append(event)
                         self.document['active'][key] = event['id']
                         # Save before sending. A restart must not duplicate an uncertain delivery.
                         # Keep the limit across edits of thresholds, delay, target or priority.
                         cooldown_key = hashlib.sha256(json.dumps([device['id'], rule]).encode()).hexdigest()
+                        def previous_rule(e):
+                            old = e.get('rule')
+                            return 'critical_' + old if old in THRESHOLD_RULES and e.get('threshold_version') != 2 and e.get('notification_level') == 'critical' else old
                         previous = (e['at'] for e in self.document['events'] if e.get('device_id') == device['id']
-                                    and e.get('rule') == rule and e.get('delivery') in ('sent', 'uncertain', 'failed'))
+                                    and previous_rule(e) == rule and e.get('delivery') in ('sent', 'uncertain', 'failed'))
                         last_sent = max(self.document['sent'].get(cooldown_key, 0), max(previous, default=0))
                         event['delivery'] = 'cooldown' if now - last_sent < 300 else 'uncertain'
                         if event['delivery'] != 'cooldown':
@@ -227,11 +269,11 @@ class AlertEngine:
                         self.on_change()
                         if event['delivery'] != 'cooldown':
                             try:
-                                message = f"{device['name']}: {LABELS[rule]}. {reason} Kontrollér personen og sensoren. Radarens estimat er ikke en medicinsk vurdering."
+                                message = f"{device['name']}: {LABELS[rule]}. {reason} Varighed: mindst {duration} sekunder. Kontrollér personen og sensoren. Radarens estimat er ikke en medicinsk vurdering."
                                 if rule == 'signal_loss':
                                     message += ' Manglende signal dokumenterer ikke vejrtrækningsstop.'
                                 tag = hashlib.sha256(key.encode()).hexdigest()[:20]
-                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESP32Health · '+LABELS[rule], message, tag, settings['notification_level']), timeout=12)
+                                await asyncio.wait_for(self.notify(settings['notify_service'], 'ESP32Health · '+LABELS[rule], message, tag, level), timeout=12)
                                 event['delivery'] = 'sent'
                             except (Exception,):
                                 # No payload or health data in logs. Failure is visible in the local log.

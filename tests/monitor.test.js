@@ -45,3 +45,27 @@ test('Failed test is visible and never described as delivered',async()=>{
  await ESP32HealthDashboard.prototype._testNotification.call(context,'test');
  assert.equal(context._testMessages.test,'Forbindelsen er afbrudt');clearTimeout(context._testCooldownTimer);
 });
+
+test('Legacy priorities and their shared duration migrate to the correct tier',async()=>{
+ const {normalizeAlerts,validateAlerts}=await import('../esp32health/web/dashboard.js');
+ for(const level of ['normal','critical']){
+  const a=normalizeAlerts({enabled:true,heart_low:50,heart_high:100,delay:47,notification_level:level,notify_service:'notify.mobile_app_test'});
+  const prefix=level==='critical'?'critical_':'';
+  assert.equal(a[prefix+'heart_high'],100);assert.equal(a[prefix+'heart_high_delay'],47);
+  assert.equal(a[level==='critical'?'heart_high':'critical_heart_high'],null);
+  assert.deepEqual(normalizeAlerts(a),a);assert.doesNotThrow(()=>validateAlerts(a,'MR60BHA2'));
+ }
+});
+test('Tier validation rejects inverted severity and invalid durations',async()=>{
+ const {normalizeAlerts,validateAlerts}=await import('../esp32health/web/dashboard.js');
+ const valid=normalizeAlerts({threshold_version:2,notify_service:'notify.mobile_app_test',heart_low:50,critical_heart_low:40,heart_high:100,critical_heart_high:120,heart_high_delay:30,critical_heart_high_delay:5});
+ assert.doesNotThrow(()=>validateAlerts(valid,'MR60BHA2'));
+ for(const edit of [{critical_heart_low:60},{critical_heart_high:90},{heart_high_delay:0},{critical_heart_high_delay:3601},{critical_heart_high_delay:null}])assert.throws(()=>validateAlerts({...valid,...edit},'MR60BHA2'));
+});
+test('Explicit test priority does not change a saved alarm or its durations',async()=>{
+ const requests=[];const original={device_id:'test',notify_service:'notify.mobile_app_test',notification_level:'normal'};
+ const context={_connected:true,_testingId:'',_testCooldownUntil:0,_testMessages:{},_notificationSettings:()=>({...original}),_refreshTestStatus:()=>{},_hass:{testNotification:async value=>{requests.push(value);return {message:'Accepteret'};}}};
+ await ESP32HealthDashboard.prototype._testNotification.call(context,'test','critical');
+ assert.equal(requests[0].notification_level,'critical');assert.equal(original.notification_level,'normal');
+ clearTimeout(context._testCooldownTimer);
+});

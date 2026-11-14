@@ -1,3 +1,14 @@
+# 0.4.0
+
+- Separate alarm- og kritiske grænser for høj/lav puls og vejrtrækning.
+- Egen sammenhængende varighed i sekunder for hver grænse og hvert niveau.
+- Vis løbende ventetid uden at afbryde redigering af formularen.
+- Nulstil den relevante timer ved normal eller utilgængelig måling.
+- Kritisk eskalering blokeres ikke af en tidligere almindelig alarm; udelad samtidig almindelig besked, mens kritisk er aktiv.
+- Separate testknapper til almindelig og kritisk besked.
+- Bevar hidtidige grænser, varighed, prioritet, modtager og aktivering ved opdatering.
+- Ingen nye medicinske standardgrænser eller automatisk aktivering.
+
 # 0.3.1
 
 - Vælg almindelig eller kritisk besked pr. radar. Almindelig er standard.

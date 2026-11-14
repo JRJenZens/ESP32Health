@@ -74,7 +74,7 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_critical_alarm_and_test_share_the_same_notification_level(self):
         settings = self.config['devices'][0]['alerts']
-        settings.update(notification_level='critical',notify_service='notify.mobile_app_test')
+        settings.update(heart_high=None,critical_heart_high=90,notification_level='critical',notify_service='notify.mobile_app_test')
         await self.tick()
         await self.tick(5)
         self.assertEqual(self.sent[0][4],'critical')

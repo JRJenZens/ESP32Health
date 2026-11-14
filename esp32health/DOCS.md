@@ -46,17 +46,30 @@ MR60BHA2 skal have én person i ro og korrekt afstand. Appen kræver positive og
 
 MR60FDA2 skal være monteret og kalibreret korrekt i ESPHome/Home Assistant. Appen ændrer ikke højde, følsomhed, firmware eller andre fysiske indstillinger.
 
-Under **Alarmer** vælger du dine egne grænser og en varighed, beskedmodtager og **Slå alarmer til**. Tryk **Gem alarmindstillinger** for hver enhed og vent på **Opsætning gemt**. Tomme grænser er inaktive. Alle regler er slået fra, indtil du aktiverer dem. Modtagere er Home Assistants notifikationer eller en tilgængelig Companion-app.
+Under **Alarmer** kan hver BHA2-radar få separate grænser for **Puls** og **Vejrtrækning**, både **Under grænsen** og **Over grænsen**.
 
-Vælg **Beskedtype** for hver radar: **Almindelig besked** er standard; **Kritisk besked · iPhone/iPad** kan afspille lyd gennem lydløs tilstand og Fokus, hvis Home Assistant har tilladelse til kritiske advarsler i telefonens notifikationsindstillinger. Vælg en telefon/tablet som modtager for at bruge den kritiske profil. Profilen er til iOS; Android kræver særskilt opsætning af alarmkanaler, som denne udgave ikke foretager. [Officiel vejledning](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+- **Alarm:** vælg en grænse og hvor mange sammenhængende sekunder den skal være overskredet. Der sendes en almindelig besked.
+- **Kritisk alarm:** vælg en kritisk grænse og en separat varighed. Der sendes en kritisk besked til en valgt Companion-modtager.
 
-Tryk **Send testbesked** eller **Send kritisk testbesked** for at teste det valgte mål og typen ovenfor. Testen virker, selv når alarmregler er slået fra, og ændrer ikke reglerne. Den gemmes i loggen, bruger samme afsendelse som alarmer og kan højst sendes hvert 10. sekund. Kontrollér på telefonen, at den vises og eventuelt afspiller lyd. Tryk **Gem alarmindstillinger** for at bruge valget til kommende alarmer.
+Tomme grænser er slået fra. Varigheder kan være 1–3600 sekunder. Kritisk lavgrænse må ikke være højere end alarmens lavgrænse; kritisk højgrænse må ikke være lavere end alarmens højgrænse. Samme grænse kan bruges med forskellige varigheder.
 
-Hvis en test accepteres af HA, men ikke vises: kontrollér, at den valgte Companion-modtager er den aktuelle telefon. Åbn Home Assistant-appen på telefonen og kontrollér notifikationstilladelser, lyde og eventuelt kritiske advarsler. En eksisterende service i HA beviser ikke, at en gammel telefonregistrering stadig modtager push.
+Markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Vent på **Opsætning gemt**. Der er ingen medicinske standardgrænser eller automatisk aktivering.
 
-Alarmkontrollen kører i appen, selv om browseren er lukket. Appen og Home Assistant skal være startet og tilgængelige; stop, opdatering, genstart eller strømsvigt giver et hul i kontrollen. Grænseregler kræver brugbare målebetingelser. Valgfrit signaltab omfatter også ingen person, nulmåling, forkert afstand og afbrudt forbindelse. Det er ikke en bekræftet vejrtrækningspause.
+En grænse skal være overskredet i hele sin valgte periode. En normal måling eller tab af brugbar måling nulstiller den pågældende timer. Statusfeltet viser den aktuelle ventetid. Timerne er uafhængige, så en kritisk alarm kan udløses efter sin egen varighed, selv om en almindelig alarm netop er sendt. Udløses begge samtidig, sendes kun kritisk. En almindelig besked for samme betingelse udelades, mens den kritiske alarm er aktiv; ved nedtrapning kan den almindelige grænse igen blive aktiv.
 
-Forsinkelsen kan sættes til 5–600 sekunder og starter forfra ved afbrydelse eller genstart. Der sendes én besked pr. hændelse, højst én pr. regel hvert femte minut. Loggen viser op til 50 hændelser, herunder afsendelsesfejl og uafklaret levering efter afbrydelse. Der forsøges ikke automatisk igen ved fejl; kontrollér modtager og HA, og afprøv næste hændelse. Home Assistants accept er ikke en kvittering fra telefonen. Appen er ikke medicinsk udstyr eller et medicinsk alarmsystem.
+**Signaltab** og FDA2-**Faldsignal** har egen varighed og et valg af beskedtype. Signaltab omfatter også ingen person, nulmåling, forkert afstand og afbrudt forbindelse. Det er ikke en bekræftet vejrtrækningspause.
+
+Kritiske beskeder på iPhone/iPad kræver tilladelse til kritiske advarsler i Home Assistants notifikationsindstillinger og kan da afspille lyd trods lydløs tilstand og Fokus. Android-alarmkanaler opsættes ikke af denne app. [Officiel vejledning](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+
+**Send testbesked** og **Send kritisk testbesked** afprøver modtageren uden at ændre eller aktivere regler. De bruger samme afsendelse som alarmerne, gemmes i loggen og kan højst sendes hvert 10. sekund. Kontrollér på telefonen, at beskeden vises og eventuelt afspiller lyd. En HA-accept er ikke en kvittering fra telefonen.
+
+Kontrollér ved manglende telefonbesked, at modtageren er den aktuelle telefon, og at Home Assistant-appen har notifikationstilladelse, lyde og eventuelt kritiske advarsler. En gammel Companion-registrering kan fortsat findes som service uden at modtage push.
+
+Der sendes én besked pr. hændelse, højst én pr. betingelse og niveau hvert femte minut. Kritisk eskalering blokeres ikke af en almindelig besked. Loggen viser op til 50 hændelser og afsendelsesfejl. Der forsøges ikke automatisk igen ved fejl; kontrollér HA og modtageren og afprøv næste hændelse.
+
+Alarmkontrollen kræver, at appen og Home Assistant kører. Stop, opdatering, genstart eller strømsvigt giver et hul i kontrollen; afventende perioder begynder forfra. Appen er ikke medicinsk udstyr eller et medicinsk alarmsystem.
+
+Tidligere grænser fra 0.3 overføres med samme værdi, tid, modtager og aktivering til det tilsvarende almindelige eller kritiske niveau. Ingen nye grænser vælges automatisk. Gennemgå felterne efter opdateringen. Gendan en fuld backup af tidligere version og opsætning, hvis du ruller tilbage til 0.3.
 
 ## Opdatering og backup
 

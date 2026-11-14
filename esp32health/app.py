@@ -14,7 +14,7 @@ from aiohttp import web
 from ha_bridge import HABridge, HAUnavailable
 from alerts import AlertEngine, validate_alerts
 
-VERSION = '0.3.1'
+VERSION = '0.4.0'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},

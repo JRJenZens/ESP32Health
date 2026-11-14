@@ -1,6 +1,30 @@
-/* ESP32Health v0.3.1 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.3.1';
-export const DEFAULT_ALERTS = {enabled:false,heart_low:null,heart_high:null,breath_low:null,breath_high:null,signal_loss:false,fall:false,delay:30,notify_service:'persistent_notification.create',notification_level:'normal'};
+/* ESP32Health v0.4.0 | MIT | https://github.com/JRJenZens/ESP32Health */
+export const VERSION = '0.4.0';
+export const THRESHOLD_RULES=['heart_low','heart_high','breath_low','breath_high'];
+export const DEFAULT_ALERTS = {enabled:false,heart_low:null,heart_high:null,breath_low:null,breath_high:null,signal_loss:false,fall:false,delay:30,notify_service:'persistent_notification.create',notification_level:'normal',threshold_version:2,critical_heart_low:null,critical_heart_high:null,critical_breath_low:null,critical_breath_high:null};
+export function normalizeAlerts(value={}) {
+  const a={...DEFAULT_ALERTS,...value};
+  const legacy=!Object.hasOwn(value,'threshold_version')&&!Object.keys(value).some(k=>k.startsWith('critical_')||k.endsWith('_delay'));
+  for(const rule of THRESHOLD_RULES){
+    a[rule+'_delay']=Object.hasOwn(value,rule+'_delay')?value[rule+'_delay']:a.delay;
+    a['critical_'+rule+'_delay']=Object.hasOwn(value,'critical_'+rule+'_delay')?value['critical_'+rule+'_delay']:a.delay;
+    if(legacy&&a.notification_level==='critical'){a['critical_'+rule]=a[rule];a[rule]=null;}
+  }
+  a.threshold_version=2;return a;
+}
+export function validateAlerts(a,model) {
+  const rules=THRESHOLD_RULES.flatMap(k=>[k,'critical_'+k]);
+  for(const key of ['delay',...rules.map(k=>k+'_delay')])if(!Number.isInteger(a[key])||a[key]<1||a[key]>3600)throw Error('Vælg en varighed på 1–3600 hele sekunder.');
+  for(const rule of rules){const n=a[rule],max=rule.includes('heart')?300:100;if(n!==null&&(!Number.isFinite(n)||n<=0||n>max))throw Error('Angiv positive grænser inden for feltets interval, eller lad feltet stå tomt.');if(model!=='MR60BHA2'&&n!==null)throw Error('Puls- og vejrtrækningsgrænser kræver MR60BHA2.');}
+  for(const metric of ['heart','breath']){
+    const lows=[a[metric+'_low'],a['critical_'+metric+'_low']].filter(n=>n!==null),highs=[a[metric+'_high'],a['critical_'+metric+'_high']].filter(n=>n!==null);
+    if(lows.length&&highs.length&&Math.max(...lows)>=Math.min(...highs))throw Error('Den nedre grænse skal være lavere end den øvre.');
+  }
+  for(const rule of THRESHOLD_RULES)if(a[rule]!==null&&a['critical_'+rule]!==null&&(rule.endsWith('low')?a['critical_'+rule]>a[rule]:a['critical_'+rule]<a[rule]))throw Error('Den kritiske grænse skal ligge mindst lige så langt uden for normalområdet som alarmgrænsen.');
+  if(a.enabled&&!a.signal_loss&&!a.fall&&rules.every(k=>a[k]===null))throw Error('Vælg mindst én regel, før du slår alarmer til.');
+  if((a.notification_level==='critical'||THRESHOLD_RULES.some(k=>a['critical_'+k]!==null))&&a.notify_service==='persistent_notification.create')throw Error('Vælg en telefon eller tablet som modtager af en kritisk besked.');
+  return a;
+}
 export const ROLES = {
   MR60BHA2: { presence: 'Tilstedeværelse', heart_rate: 'Puls', breath_rate: 'Vejrtrækning', distance: 'Afstand', num_targets: 'Antal personer (estimat)', illuminance: 'Lysniveau' },
   MR60FDA2: { presence: 'Tilstedeværelse', fall: 'Fald registreret', illuminance: 'Lysniveau' },
@@ -145,6 +169,10 @@ const css = `
 `;
 
 const monitorCSS = `
+.threshold-groups{display:grid;gap:18px}.threshold-group{border:1px solid var(--line);border-radius:10px;overflow:hidden}.threshold-group>h3{padding:12px 14px;background:#fcf4f6}.threshold-head,.threshold-row{display:grid;grid-template-columns:130px 1fr 1fr;gap:12px;padding:12px 14px}.threshold-head{font-size:11px;color:#805866;background:#fff9fa}.threshold-row{border-top:1px solid var(--line);align-items:center}.threshold-row>b{font-size:12px}.threshold-row small{display:block;font-size:10px;font-weight:400;color:var(--muted);margin-top:3px}.threshold-level{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0}.critical-level{border-left:2px solid #d796a8;padding-left:12px}.threshold-level .field{font-size:10px}.threshold-head span:last-child{color:#a03451}
+@container(max-width:1050px){.threshold-head,.threshold-row{grid-template-columns:100px 1fr 1fr;gap:10px}.threshold-level{grid-template-columns:1fr}}
+@container(max-width:600px){.threshold-head{display:none}.threshold-row{grid-template-columns:1fr;gap:12px}.threshold-level{grid-template-columns:1fr 1fr}.threshold-row>b{font-size:13px}.threshold-level:first-of-type::before{content:'Alarm · almindelig besked';grid-column:1/-1;font-size:11px;color:#805866}.critical-level::before{content:'Kritisk alarm · kritisk besked';grid-column:1/-1;font-size:11px;color:#a03451}.critical-level{padding:10px 0 0;border-left:0;border-top:1px solid #ecc6d1}}
+
 .vital-monitor{background:#23181e;color:#f8e8ee;border:1px solid #452733;border-radius:12px;padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:5px 0 14px;overflow:hidden}.monitor-channel{min-width:0}.monitor-channel+.monitor-channel{border-left:1px solid #50313d;padding-left:14px}.monitor-label{font-size:12px;font-weight:600;color:#ffd5de}.monitor-label span{display:block;font-size:9px;color:#b69ba7;font-weight:400;margin-top:2px}.monitor-reading{font-size:48px;font-variant-numeric:tabular-nums;line-height:1.4;letter-spacing:-1px;color:#ffb1c1}.monitor-reading small{display:block;font-size:10px;color:#c1a4ae;letter-spacing:0;margin-top:-5px}.monitor-channel:last-of-type .monitor-reading{color:#dcc3ff}.rhythm{height:44px;display:flex;align-items:center;gap:12px;color:#6d4a58;margin:8px 0 3px}.rhythm svg{width:30px;height:30px}.rhythm-line{height:2px;flex:1;background:currentColor;border-radius:2px;opacity:.3}.rhythm.running{color:#ff8fa8}.rhythm.running svg{animation:heartbeat var(--period) ease-in-out infinite;transform-origin:center}.rhythm.breath_rate.running{color:#c7a6f6}.rhythm.breath_rate.running svg{animation:breathe var(--period) ease-in-out infinite}.monitor-state{font-size:9px;color:#b99da9}.monitor-caption{grid-column:1/-1;font-size:9px;color:#c8aebb;border-top:1px solid #50313d;padding-top:10px;margin:0}.diagnostics{margin-top:14px;border-top:1px solid var(--line);padding-top:11px;font-size:11px;color:#927b80}.diagnostics summary{cursor:pointer;color:#825263;font-weight:600}.diagnostics p{overflow-wrap:anywhere;margin:9px 0}.raw-values{display:flex;gap:25px}.raw-values b{display:block;color:#603f4b}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:#6b4553;margin:16px 0}.check input{width:17px;height:17px;accent-color:#a14e63;flex-shrink:0}.alarm-settings{background:#fff}.alarm-rule{display:flex;flex-direction:column;gap:3px;padding:12px 0;border-bottom:1px solid var(--line);font-size:11px}.alarm-rule span{color:#927b80}.alarm-rule.bad b,.delivery-error{color:#a23944!important}.alarm-settings .note{margin:12px 0}.alarm-settings .btn:disabled{cursor:wait}
 @keyframes heartbeat{0%,40%,100%{transform:scale(1);opacity:.7}12%{transform:scale(1.2);opacity:1}25%{transform:scale(1.03)}30%{transform:scale(1.13)}}@keyframes breathe{0%,100%{transform:scale(.78);opacity:.6}50%{transform:scale(1.14);opacity:1}}
 @media(prefers-reduced-motion:reduce){.rhythm.running svg{animation:none}}
@@ -182,10 +210,11 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   connectedCallback() {
     this._timer = setInterval(() => { if(!['devices','alerts'].includes(this._tab))this.render(); }, 15000);
+    this._alarmTimer=setInterval(()=>{if(this._tab==='alerts')this._refreshAlarmStatus();},1000);
     this.render();
     if (this._hass && this._historyState === 'idle' && this._config.devices.length) void this.loadHistory();
   }
-  disconnectedCallback() { clearInterval(this._timer);clearTimeout(this._testCooldownTimer);this._historyRequest++; if(this._historyState === 'loading') this._historyState = 'idle'; }
+  disconnectedCallback() { clearInterval(this._timer);clearInterval(this._alarmTimer);clearTimeout(this._testCooldownTimer);this._historyRequest++; if(this._historyState === 'loading') this._historyState = 'idle'; }
   get _connected() { return connectionOnline(this._hass); }
   async loadHistory() {
     const ids = [...new Set(this._config.devices.flatMap(d => Object.values(d.entities)).filter(Boolean))];
@@ -271,7 +300,7 @@ export class ESP32HealthDashboard extends HTMLElement {
     if (action === 'tab') {this._tab = b.dataset.tab;this.render();if(this._tab==='devices'&&!this._registryLoaded&&this._connected)void this._loadRegistries().then(()=>this.render()).catch(()=>{});}
     if(action==='tab' && this._tab==='alerts' && this._connected && !this._targetsLoaded)void this._loadTargets();
     if(action==='save-alerts')this._saveAlerts(b.dataset.id);
-    if(action==='test-notification')void this._testNotification(b.dataset.id);
+    if(action==='test-notification')void this._testNotification(b.dataset.id,b.dataset.testLevel);
     if (action === 'pick' && this._connected)void this._openPicker();
     if (action === 'close-picker'){this._pickerOpen=false;this.render();}
     if (action === 'add-picked')this._addPickedDevice();
@@ -294,7 +323,7 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _change(e) {
     const el = e.target;
-    if(el.dataset.alertKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);const key=el.dataset.alertKey;this._alertDrafts[d.id]={...DEFAULT_ALERTS,...d.alerts,...this._alertDrafts[d.id],[key]:el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value};this._refreshTestStatus();return;}
+    if(el.dataset.alertKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);const key=el.dataset.alertKey;this._alertDrafts[d.id]={...normalizeAlerts(d.alerts),...this._alertDrafts[d.id],[key]:el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value};this._refreshTestStatus();return;}
     if(el.dataset.pickerDevice){this._pickerDevice=el.value;const d=this._registries.devices.find(x=>x.id===el.value);this._pickerModel=d?inferModel(d,this._registries.entities,this._hass?.states || {}):'';this.render();return;}
     if(el.dataset.pickerModel){this._pickerModel=el.value;this.render();return;}
     if (el.dataset.chartDevice) {this._chartDevice=el.value;this.render();return;}
@@ -316,17 +345,9 @@ export class ESP32HealthDashboard extends HTMLElement {
     return targets.map(x=>`<option value="${escapeHTML(x.id)}" ${x.id===selected?'selected':''}>${escapeHTML(x.name)}</option>`).join('');
   }
   _saveAlerts(id) {
-    const device=this._config.devices.find(x=>x.id===id);const a={...DEFAULT_ALERTS,...device.alerts,...this._alertDrafts[id]};
+    const device=this._config.devices.find(x=>x.id===id);const a={...normalizeAlerts(device.alerts),...this._alertDrafts[id]};
     for(const el of this.shadowRoot?.querySelectorAll('[data-alert-key]') || [])if(el.dataset.device===id)a[el.dataset.alertKey]=el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value;
-    let error='';
-    if(!Number.isInteger(a.delay)||a.delay<5||a.delay>600)error='Vælg en forsinkelse på 5–600 sekunder.';
-    for(const role of ['heart','breath']) {
-      const low=a[role+'_low'],high=a[role+'_high'],max=role==='heart'?300:100;
-      if([low,high].some(n=>n!==null&&(!Number.isFinite(n)||n<=0||n>max)))error='Angiv positive grænser inden for feltets interval, eller lad feltet stå tomt.';
-      if(low!==null&&high!==null&&low>=high)error='Den nedre grænse skal være lavere end den øvre.';
-    }
-    if(a.enabled&&!a.signal_loss&&!a.fall&&['heart_low','heart_high','breath_low','breath_high'].every(k=>a[k]===null))error='Vælg mindst én regel, før du slår alarmer til.';
-    if(a.notification_level==='critical'&&a.notify_service==='persistent_notification.create')error='Vælg en telefon eller tablet som modtager af en kritisk besked.';
+    let error='';try{validateAlerts(a,device.model);}catch(e){error=e.message;}
     this._alarmError=error;
     if(error){this._refreshAlarmStatus();return;}
     delete this._alertDrafts[id];
@@ -334,13 +355,13 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _notificationSettings(id) {
     const d=this._config.devices.find(x=>x.id===id);
-    const a={...DEFAULT_ALERTS,...d.alerts,...this._alertDrafts[id]};
+    const a={...normalizeAlerts(d.alerts),...this._alertDrafts[id]};
     for(const el of this.shadowRoot.querySelectorAll('[data-alert-key]'))if(el.dataset.device===id&&['notify_service','notification_level'].includes(el.dataset.alertKey))a[el.dataset.alertKey]=el.value;
     return {device_id:id,notify_service:a.notify_service,notification_level:a.notification_level};
   }
-  async _testNotification(id) {
+  async _testNotification(id,level) {
     if(this._testingId||Date.now()<this._testCooldownUntil||!this._connected||this._hass?.configSaving)return;
-    const settings=this._notificationSettings(id);
+    const settings=this._notificationSettings(id);if(level)settings.notification_level=level;
     if(settings.notification_level==='critical'&&settings.notify_service==='persistent_notification.create'){
       this._testMessages[id]='Vælg en telefon eller tablet til en kritisk testbesked.';this._refreshTestStatus();return;
     }
@@ -356,29 +377,32 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _refreshTestStatus() {
     for(const button of this.shadowRoot.querySelectorAll('[data-action="test-notification"]')){
-      const settings=this._notificationSettings(button.dataset.id);
+      const settings=this._notificationSettings(button.dataset.id);if(button.dataset.testLevel)settings.notification_level=button.dataset.testLevel;
       button.disabled=Boolean(this._testingId||Date.now()<this._testCooldownUntil||!this._connected||this._hass?.configSaving);
       button.textContent=this._testingId===button.dataset.id?'Sender testbesked…':settings.notification_level==='critical'?'Send kritisk testbesked':'Send testbesked';
     }
     for(const result of this.shadowRoot.querySelectorAll('[data-test-result]'))result.textContent=this._testMessages[result.dataset.testResult] || '';
   }
   _alarmStatus() {
-    const status={watching:'Overvåger',paused:'Afventer brugbart signal',pending:'Afventer forsinkelse',active:'Aktiv hændelse'};
+    const status={watching:'Overvåger',paused:'Afventer brugbart signal',pending:'Afventer varighed',active:'Aktiv hændelse',covered:'Dækket af aktiv kritisk alarm'};
     const delivery={sent:'Besked accepteret af Home Assistant',failed:'Beskeden kunne ikke sendes · kontrollér Home Assistant og modtageren',uncertain:'Levering uafklaret efter afbrydelse',cooldown:'Besked begrænset · højst én pr. regel hvert 5. minut',pending:'Afventer afsendelse'};
     const alerts=this._hass?.alerts || {rules:[],events:[]};
-    return `${this._hass?.alerts?.running===false?'<div class="error" role="alert">Alarmkontrollen kører ikke. Genstart appen og kontrollér loggen.</div>':''}${this._alarmError?`<div class="error" role="alert">${escapeHTML(this._alarmError)}</div>`:''}<div class="alarm-rules">${alerts.rules?.map(r=>`<div class="alarm-rule ${r.state==='active'?'bad':''}"><b>${escapeHTML(this._config.devices.find(d=>d.id===r.device_id)?.name)} · ${escapeHTML(r.label)}</b><span>${status[r.state] || 'Ukendt'}${r.reason?' · '+escapeHTML(r.reason):''}</span></div>`).join('') || '<p class="note">Ingen aktive alarmregler. Vælg dine indstillinger og gem dem nedenfor.</p>'}</div><h2 style="margin-top:18px">Seneste hændelser</h2>${alerts.events?.map(e=>`<div class="alarm-rule"><b>${new Date(e.at*1000).toLocaleString('da-DK')} · ${escapeHTML(e.name)} · ${escapeHTML(e.label)}</b><span>${escapeHTML(e.reason)}${e.notification_level?' · '+(e.notification_level==='critical'?'Kritisk besked':'Almindelig besked'):''}</span><span class="${e.delivery==='failed'?'delivery-error':''}">${delivery[e.delivery] || 'Ukendt levering'}${e.ended_at?' · Reglen er ikke længere aktiv':''}</span></div>`).join('') || '<p class="note">Ingen hændelser i den lokale alarmlog.</p>'}`;
+    return `${this._hass?.alerts?.running===false?'<div class="error" role="alert">Alarmkontrollen kører ikke. Genstart appen og kontrollér loggen.</div>':''}${this._alarmError?`<div class="error" role="alert">${escapeHTML(this._alarmError)}</div>`:''}<div class="alarm-rules">${alerts.rules?.map(r=>`<div class="alarm-rule ${r.state==='active'?'bad':''}"><b>${escapeHTML(this._config.devices.find(d=>d.id===r.device_id)?.name)} · ${escapeHTML(r.label)}</b><span>${status[r.state] || 'Ukendt'}${r.state==='pending'?` · ${Math.max(0,Math.min(r.delay,Math.floor(Date.now()/1000-r.since)))} / ${r.delay} sek.`:''}${r.reason?' · '+escapeHTML(r.reason):''}</span></div>`).join('') || '<p class="note">Ingen aktive alarmregler. Vælg dine indstillinger og gem dem nedenfor.</p>'}</div><h2 style="margin-top:18px">Seneste hændelser</h2>${alerts.events?.map(e=>`<div class="alarm-rule"><b>${new Date(e.at*1000).toLocaleString('da-DK')} · ${escapeHTML(e.name)} · ${escapeHTML(e.label)}</b><span>${escapeHTML(e.reason)}${e.duration?' · mindst '+e.duration+' sek.':''}${e.notification_level?' · '+(e.notification_level==='critical'?'Kritisk besked':'Almindelig besked'):''}</span><span class="${e.delivery==='failed'?'delivery-error':''}">${delivery[e.delivery] || 'Ukendt levering'}${e.ended_at?' · Reglen er ikke længere aktiv':''}</span></div>`).join('') || '<p class="note">Ingen hændelser i den lokale alarmlog.</p>'}`;
   }
   _refreshAlarmStatus() {
     const target=this.shadowRoot.querySelector('#alarm-status');if(target)target.innerHTML=this._alarmStatus();
     for(const button of this.shadowRoot.querySelectorAll('[data-action="save-alerts"]'))button.disabled=Boolean(this._hass?.configSaving);
     this._refreshTestStatus();
   }
+  _thresholdEditor(d,a) {
+    const number=(key,label,max,delay=false)=>`<label class="field">${label}<input type="number" min="1" max="${max}" step="1" placeholder="${delay?'Sekunder':'Ingen grænse'}" data-device="${escapeHTML(d.id)}" data-alert-key="${key}" value="${a[key]===null?'':a[key]}"></label>`;
+    return `<div class="threshold-groups">${[['heart','Puls','slag/min',300],['breath','Vejrtrækning','åndedrag/min',100]].map(([metric,title,unit,max])=>`<section class="threshold-group"><h3>${title}</h3><div class="threshold-head"><span>Betingelse</span><span>Alarm · almindelig besked</span><span>Kritisk alarm · kritisk besked</span></div>${['low','high'].map(direction=>{const key=metric+'_'+direction;return `<div class="threshold-row"><b>${direction==='low'?'Under grænsen':'Over grænsen'}<small>${unit}</small></b><div class="threshold-level">${number(key,'Alarmgrænse · '+(direction==='low'?'under':'over'),max)}${number(key+'_delay','Sammenhængende sekunder',3600,true)}</div><div class="threshold-level critical-level">${number('critical_'+key,'Kritisk grænse · '+(direction==='low'?'under':'over'),max)}${number('critical_'+key+'_delay','Sammenhængende sekunder',3600,true)}</div></div>`;}).join('')}</section>`).join('')}</div><p class="note">Tomme grænser er inaktive. Hver grænse har sin egen timer. Ved normal måling eller tab af brugbar måling starter den pågældende timer forfra. En kritisk alarm sendes uafhængigt af en tidligere almindelig alarm. Mens en kritisk alarm er aktiv, udelades en samtidig almindelig besked for samme betingelse.</p>`;
+  }
   _alarms() {
-    return `<section class="panel" style="margin-top:0"><h2>Dine alarmregler</h2><p class="note">Reglerne kører i Home Assistant-appen, også når denne side er lukket. Vælg selv grænser; der er ingen anbefalede medicinske standardgrænser. Gem hver enhed for at aktivere ændringer.</p><p class="note">En manglende vejrtrækningsmåling kan skyldes bevægelse, placering eller tabt forbindelse. Den dokumenterer ikke vejrtrækningsstop. Appen kan ikke erstatte medicinsk overvågning eller tilkalde akut hjælp.</p><div id="alarm-status">${this._alarmStatus()}</div></section><div class="device-list" style="margin-top:18px">${this._config.devices.map(d=>{
-      const a={...DEFAULT_ALERTS,...d.alerts,...this._alertDrafts[d.id]};
+    return `<section class="panel" style="margin-top:0"><h2>Dine alarmregler</h2><p class="note">Vælg separate grænser og varigheder for alarm og kritisk alarm. Reglerne kører i Home Assistant-appen, også når siden er lukket. Der er ingen medicinske standardgrænser. Gem for hver enhed for at aktivere ændringer.</p><p class="note">Manglende vejrtrækningsmåling kan skyldes bevægelse, placering eller forbindelse og dokumenterer ikke vejrtrækningsstop. Appen erstatter ikke medicinsk overvågning eller akut hjælp.</p><div id="alarm-status">${this._alarmStatus()}</div></section><div class="device-list" style="margin-top:18px">${this._config.devices.map(d=>{
+      const a={...normalizeAlerts(d.alerts),...this._alertDrafts[d.id]};
       const check=(key,label)=>`<label class="check"><input type="checkbox" data-device="${escapeHTML(d.id)}" data-alert-key="${key}" ${a[key]?'checked':''}>${label}</label>`;
-      const input=(key,label,max)=>`<label class="field">${label}<input type="number" min="1" max="${max}" step="1" placeholder="Ingen grænse" data-device="${escapeHTML(d.id)}" data-alert-key="${key}" value="${a[key]===null?'':a[key]}"></label>`;
-      return `<section class="settings-device alarm-settings"><h2>${escapeHTML(d.name)}</h2>${check('enabled','Slå alarmer til for denne enhed')}<div class="fields">${d.model==='MR60BHA2'?input('heart_low','Puls under · slag/min',300)+input('heart_high','Puls over · slag/min',300)+input('breath_low','Vejrtrækning under · åndedrag/min',100)+input('breath_high','Vejrtrækning over · åndedrag/min',100):''}<label class="field">Varighed før besked · sekunder<input type="number" min="5" max="600" step="1" data-device="${escapeHTML(d.id)}" data-alert-key="delay" value="${a.delay}"></label><label class="field">Beskedmodtager<select data-device="${escapeHTML(d.id)}" data-alert-key="notify_service">${this._targetOptions(a.notify_service)}</select></label><label class="field">Beskedtype<select data-device="${escapeHTML(d.id)}" data-alert-key="notification_level"><option value="normal" ${a.notification_level==='normal'?'selected':''}>Almindelig besked</option><option value="critical" ${a.notification_level==='critical'?'selected':''}>Kritisk besked · iPhone/iPad</option></select></label></div><p class="note">Almindelige telefonbeskeder bruger standardlyden. Kritiske beskeder på iPhone/iPad kan afspille lyd trods lydløs tilstand og Fokus, hvis Home Assistant har tilladelse til kritiske advarsler i telefonens notifikationsindstillinger.</p>${check('signal_loss',d.model==='MR60BHA2'?'Giv besked ved manglende målesignal, nulmåling eller forkerte målebetingelser':'Giv besked, hvis faldsignalet bliver utilgængeligt')}${d.model==='MR60FDA2'?check('fall','Giv besked ved muligt fald'):''}<p class="note">Grænseregler kræver tilgængelige målinger i målezonen. Forsinkelsen starter forfra ved afbrydelse. Én besked pr. hændelse, højst én pr. regel hvert 5. minut. En accepteret besked er ikke en kvittering fra telefonen. Ved afsendelsesfejl vises fejlen i loggen; der forsøges igen ved næste hændelse.</p><button class="btn primary" data-action="save-alerts" data-id="${escapeHTML(d.id)}" ${this._hass?.configSaving?'disabled':''}>Gem alarmindstillinger</button> <button class="btn" data-action="test-notification" data-id="${escapeHTML(d.id)}">${a.notification_level==='critical'?'Send kritisk testbesked':'Send testbesked'}</button><p class="note">Testen bruger den valgte modtager og beskedtype ovenfor. Den ændrer ikke alarmreglerne og kan bruges, mens alarmer er slået fra. Højst én test hvert 10. sekund.</p><p class="note" role="status" data-test-result="${escapeHTML(d.id)}">${escapeHTML(this._testMessages[d.id] || '')}</p></section>`;
+      return `<section class="settings-device alarm-settings"><h2>${escapeHTML(d.name)}</h2>${check('enabled','Slå alarmer til for denne enhed')}<label class="field" style="margin-bottom:16px">Beskedmodtager<select data-device="${escapeHTML(d.id)}" data-alert-key="notify_service">${this._targetOptions(a.notify_service)}</select></label>${d.model==='MR60BHA2'?this._thresholdEditor(d,a):''}<h3 style="margin-top:20px">${d.model==='MR60BHA2'?'Signaltab':'Faldsignal og signaltab'}</h3>${check('signal_loss',d.model==='MR60BHA2'?'Giv besked ved manglende målesignal eller forkerte målebetingelser':'Giv besked, hvis faldsignalet bliver utilgængeligt')}${d.model==='MR60FDA2'?check('fall','Giv besked ved muligt fald'):''}<div class="fields"><label class="field">Varighed ved ${d.model==='MR60BHA2'?'signaltab':'faldsignal / signaltab'} · sekunder<input type="number" min="1" max="3600" step="1" data-device="${escapeHTML(d.id)}" data-alert-key="delay" value="${a.delay}"></label><label class="field">Beskedtype ved ${d.model==='MR60BHA2'?'signaltab':'faldsignal / signaltab'}<select data-device="${escapeHTML(d.id)}" data-alert-key="notification_level"><option value="normal" ${a.notification_level==='normal'?'selected':''}>Almindelig besked</option><option value="critical" ${a.notification_level==='critical'?'selected':''}>Kritisk besked · iPhone/iPad</option></select></label></div><p class="note">Kritiske beskeder på iPhone/iPad kræver tilladelse til kritiske advarsler i telefonens notifikationsindstillinger. Én besked pr. hændelse, højst én hvert femte minut pr. betingelse og niveau. Kritisk eskalering blokeres ikke af en almindelig besked.</p><div class="toolbar"><button class="btn primary" data-action="save-alerts" data-id="${escapeHTML(d.id)}" ${this._hass?.configSaving?'disabled':''}>Gem alarmindstillinger</button><button class="btn" data-action="test-notification" data-test-level="normal" data-id="${escapeHTML(d.id)}">Send testbesked</button><button class="btn" data-action="test-notification" data-test-level="critical" data-id="${escapeHTML(d.id)}">Send kritisk testbesked</button></div><p class="note">Testknapperne afprøver beskedmodtageren uden at gemme eller aktivere regler. Højst én test hvert 10. sekund. Home Assistants accept er ikke en kvittering fra telefonen. Afsendelsesfejl vises i loggen og forsøges først igen ved næste hændelse.</p><p class="note" role="status" data-test-result="${escapeHTML(d.id)}">${escapeHTML(this._testMessages[d.id] || '')}</p></section>`;
     }).join('')}</div>`;
   }
   _vitalMonitor(d, quality) {

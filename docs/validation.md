@@ -1,11 +1,11 @@
-# Validation — Home Assistant app 0.3.1
+# Validation — Home Assistant app 0.4.0
 
 Date: 14 November 2026, Europe/Copenhagen.
 
 ## Software and browser checks
 
-- Python 3.13: 33 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
-- Node.js 22: 32 shared sensor, monitor and setup scenarios passed. Covers invalid and unavailable values, distance units, vital-estimate conditions, stale timestamps, configuration validation, conservative discovery, compressed history and CSV escaping. Additional cases cover generic ESP32 model names, Danish radar signatures, explicit manual ESPHome selection, ambiguous readings, device-scoped lists, duplicate prevention and waiting for configuration persistence before history.
+- Python 3.13: 42 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
+- Node.js 22: 35 shared sensor, monitor and setup scenarios passed. Covers invalid and unavailable values, distance units, vital-estimate conditions, stale timestamps, configuration validation, conservative discovery, compressed history and CSV escaping. Additional cases cover generic ESP32 model names, Danish radar signatures, explicit manual ESPHome selection, ambiguous readings, device-scoped lists, duplicate prevention and waiting for configuration persistence before history.
 - Browser fixture uses the full app/backend under `/api/hassio_ingress/synthetic/`, with synthetic data and no connection to a real Home Assistant.
 - Verified automatic data loading without URL/token fields, Recorder-shaped history and entity setup. A changed area was saved and remained after reloading the browser.
 - Desktop width 1440 and mobile width 390 visually checked; no horizontal overflow at mobile width. Screenshots are synthetic fixtures.
@@ -14,6 +14,9 @@ Date: 14 November 2026, Europe/Copenhagen.
 - The full synthetic browser fixture saved and triggered a threshold rule, showed the event/delivery log, and kept the save button usable. No live phone notification was sent.
 
 - Notification cases verify default-normal migration, critical validation, exact normal/critical payloads, rejection of arbitrary services/fields, test sending without arming, configuration remaining unchanged by tests, HTTP rate limiting, visible test failures and a cooldown that survives rule edits/legacy event logs. UI tests cover saved priority and test actions without saving rules.
+
+- Tier checks cover migration/idempotence of ordinary and critical legacy settings, severity/range validation, independent metric/direction/level durations, simultaneous critical precedence, timer reset, escalation during ordinary cooldown, pending restart and active deduplication, and migration of critical-event cooldowns.
+- The full browser fixture triggered an ordinary alert after 3 seconds and a critical escalation after 8 seconds. These are synthetic test values, not clinical recommendations. Mobile width 390 showed both levels without horizontal overflow.
 
 ## Package checks
 

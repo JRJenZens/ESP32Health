@@ -34,13 +34,21 @@ Appen bruger Home Assistants interne API gennem Supervisor. Login og adgang til 
 
 ## Valgfrie alarmregler
 
-Åbn **Alarmer**, vælg dine egne grænser, forsinkelse og beskedmodtager, markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Alt er slået fra ved installation; tomme grænser betyder ingen regel. Regler kører i appen, også når web-UI er lukket, men kræver en kørende app og Home Assistant. Grænser vurderes kun ved brugbare målinger. Signaltabsreglen dækker også nul, ingen person, forkert målezone og afbrudt forbindelse.
+Åbn **Alarmer**, vælg modtager og dine egne grænser, markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Alt er slået fra ved installation; tomme grænser betyder ingen regel. Regler kører i appen, også når web-UI er lukket, og kræver en kørende app og Home Assistant.
 
-Vælg **Beskedtype → Almindelig besked** eller **Kritisk besked · iPhone/iPad** for hver radar. Almindelig er standard og bruger standardlyden på telefonen. Kritisk lyd kræver, at Home Assistant må sende kritiske advarsler i iPhones/iPads notifikationsindstillinger; den kan da afspille lyd trods lydløs tilstand og Fokus. Kritisk kan kun vælges med en Companion-modtager. Denne udgave implementerer den kritiske profil til iOS; den etablerer ikke Android-alarmkanaler. Se [Companion-dokumentationen](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+MR60BHA2 har to niveauer for hver af de fire betingelser: puls under/over og vejrtrækning under/over. **Alarm** sender en almindelig besked; **Kritisk alarm** sender en kritisk besked til en Companion-modtager. Hver grænse har sin egen **Sammenhængende sekunder** (1–3600). Den kritiske lavgrænse skal være lavere end eller lig alarmens; den kritiske højgrænse højere end eller lig alarmens. Samme værdi kan bruges med forskellige varigheder.
 
-**Send testbesked** tester den aktuelt valgte modtager og beskedtype uden at gemme eller aktivere alarmregler. Den bruger samme afsendelse som alarmreglerne og gemmer et testresultat i loggen. Højst én test hvert 10. sekund. En accepteret test er ikke bevis for, at telefonen har modtaget den; kontrollér telefonen.
+En timer starter, når en brugbar måling overskrider den konkrete grænse. Den nulstilles ved en normal eller utilgængelig måling; en kort overskridelse tæller ikke med i næste periode. Kritisk eskalering har sin egen timer og beskedbegrænsning og blokeres ikke af en tidligere almindelig alarm. Hvis begge niveauer udløses samtidig, sendes kun den kritiske besked. Mens kritisk niveau er aktivt, udelades en samtidig almindelig besked for samme betingelse. Ved nedtrapning kan en stadig overskredet almindelig grænse igen blive aktiv.
 
-En betingelse skal vare hele forsinkelsen (5–600 sekunder). Der sendes én besked pr. hændelse og højst én pr. regel hvert femte minut. Forsinkelsen starter forfra efter genstart eller afbrydelse; allerede udløste hændelser deduplikeres efter genstart. Leveringsfejl eller uafklaret afsendelse vises i loggen og gentages ikke automatisk. En accepteret HA-handling bekræfter ikke levering til telefonen.
+Signaltab og FDA2-faldsignal har fortsat egen fælles varighed og et valg af almindelig/kritisk beskedtype. Signaltabsreglen omfatter også nulmålinger, ingen person, forkert målezone og afbrudt forbindelse. Manglende signal dokumenterer ikke vejrtrækningsstop.
+
+Kritisk lyd kræver tilladelse til kritiske advarsler i iPhones/iPads notifikationsindstillinger og kan da afspille lyd trods lydløs tilstand og Fokus. Profilen er til iOS; denne udgave etablerer ikke Android-alarmkanaler. Se [Companion-dokumentationen](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+
+De to testknapper afprøver almindelig eller kritisk afsendelse uden at gemme eller aktivere alarmregler. De bruger samme afsendelse som alarmerne og gemmer resultatet i loggen. Højst én test hvert 10. sekund. Home Assistants accept er ikke bevis for modtagelse; kontrollér telefonen.
+
+Der sendes én besked pr. hændelse og højst én pr. betingelse og niveau hvert femte minut. Genstart, ændret opsætning eller afbrudt måling starter en ny afventende periode; allerede udløste hændelser deduplikeres efter genstart. Afsendelsesfejl eller uafklaret levering gentages ikke automatisk og vises i loggen.
+
+Ved opdatering fra 0.3 bevares grænser, aktivering, modtager og den hidtidige varighed. Tidligere almindelige grænser flyttes til Alarm; tidligere kritiske grænser til Kritisk alarm. Der indsættes ingen nye kritiske grænser. Gennemgå opsætningen før næste aktivering. Ved tilbagerulning skal en fuld backup med den tidligere opsætning gendannes, da 0.3 ikke kender de nye felter.
 
 Appen er ikke en medicinsk alarm eller et nødopkaldssystem. Vælg grænser efter dit konkrete behov; der er ingen anbefalede medicinske standardgrænser.
 
