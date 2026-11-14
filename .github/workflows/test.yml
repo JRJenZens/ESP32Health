@@ -46,8 +46,9 @@ jobs:
       - name: Start app and check readiness
         run: |
           docker run -d --name esp32health-smoke -e SUPERVISOR_TOKEN=synthetic-ci-token esp32health-test
+          ESP32HEALTH_EXPECTED_VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           for attempt in $(seq 1 30); do
-            if docker exec esp32health-smoke python -c "import urllib.request,json; d=json.load(urllib.request.urlopen('http://127.0.0.1:8099/health',timeout=3)); assert d['version']=='0.2.0'"; then
+            if docker exec -e EXPECTED_VERSION="$ESP32HEALTH_EXPECTED_VERSION" esp32health-smoke python -c "import urllib.request,json,os; d=json.load(urllib.request.urlopen('http://127.0.0.1:8099/health',timeout=3)); assert d['version']==os.environ['EXPECTED_VERSION']"; then
               exit 0
             fi
             sleep 1
