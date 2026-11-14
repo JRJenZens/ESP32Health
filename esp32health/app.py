@@ -16,7 +16,7 @@ from ha_bridge import HABridge, HAUnavailable
 from alerts import AlertEngine, LABELS, valid_target, validate_alerts
 from indicators import IndicatorController, validate_indicator, validate_binding, validate_brightness_binding
 
-VERSION = '0.5.1'
+VERSION = '0.5.2'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},
@@ -49,7 +49,9 @@ def validate_backup(value):
     for key, event_id in log['active'].items():
         if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{64}:(' + '|'.join(LABELS) + ')', key) or not isinstance(event_id, str) or len(event_id) > 200:
             raise ValueError('Ugyldig aktiv alarm i backup.')
-    if any(not isinstance(k, str) or not re.fullmatch(r'[a-f0-9]{64}', k) or not timestamp(v) for k, v in log['sent'].items()):
+    # Before tiered alerts, cooldowns used fingerprint:rule keys. Keep those
+    # alongside the newer stable hashes so real upgrades retain their history.
+    if any(not isinstance(k, str) or not re.fullmatch(r'[a-f0-9]{64}(?::(' + '|'.join(LABELS) + '))?', k) or not timestamp(v) for k, v in log['sent'].items()):
         raise ValueError('Ugyldig beskedhistorik i backup.')
     return config, log
 

@@ -1,3 +1,7 @@
+# 0.5.2
+
+- Bevar også beskedhistorik fra versioner før de todelte alarmgrænser ved import af backup.
+
 # 0.5.1
 
 - GitHub-repository og installationslinks er flyttet til JRJenZens/ESPHealth.

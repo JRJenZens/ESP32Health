@@ -80,6 +80,14 @@ class BackupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await client.post('/api/backup/import', json=value, headers=HEADERS)).status, 409)
         self.assertEqual(app[STORE_KEY].path.read_bytes(), before)
 
+    async def test_legacy_cooldown_keys_survive_migration(self):
+        value = await self.archive()
+        legacy = 'a' * 64 + ':heart_high'
+        value['alerts']['sent'][legacy] = time.time() - 10
+        app, client, _ = await self.installation('new')
+        self.assertEqual((await client.post('/api/backup/import', json=value, headers=HEADERS)).status, 200)
+        self.assertEqual(app[ALERTS_KEY].document['sent'][legacy],value['alerts']['sent'][legacy])
+
     async def test_import_validates_live_indicator_ownership_before_writing(self):
         value = await self.archive()
         app, client, bridge = await self.installation('new')

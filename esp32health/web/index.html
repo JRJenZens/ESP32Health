@@ -11,7 +11,7 @@
   <script type="module" src="app.js"></script>
 </head>
 <body>
-  <header class="appbar"><span class="app-title">ESPHealth <small>Home Assistant-app · 0.5.1</small></span><div><span id="save-status" role="status"></span><span id="connection-status" role="status">Forbinder til Home Assistant…</span></div></header>
+  <header class="appbar"><span class="app-title">ESPHealth <small>Home Assistant-app · 0.5.2</small></span><div><span id="save-status" role="status"></span><span id="connection-status" role="status">Forbinder til Home Assistant…</span></div></header>
   <div id="app-error" role="alert" hidden></div>
   <div class="app-container"><esp32health-dashboard id="dashboard"></esp32health-dashboard></div>
   <details class="backup-panel"><summary>Backup og flytning</summary><p>Hent en lokal kopi af sensorkoblinger, alarmindstillinger, LED-valg og seneste hændelser. Filen indeholder ingen adgangsnøgler. Målehistorik bliver i Home Assistant.</p><p>Ved flytning: hent backup, stop den gamle app, og indlæs filen i den nye, tomme installation. Ventende alarmers tidsperiode starter forfra. Eksisterende opsætning kan ikke overskrives med import.</p><a class="backup-link" href="api/backup" download="ESPHealth-backup.json">Hent backup</a><label>Vælg backup til en ny installation<input id="backup-file" type="file" accept="application/json,.json"></label><button id="backup-import" type="button" disabled>Indlæs backup i tom installation</button><p id="backup-status" role="status"></p></details>

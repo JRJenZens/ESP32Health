@@ -1,5 +1,5 @@
-/* ESPHealth v0.5.1 | MIT | https://github.com/JRJenZens/ESPHealth */
-export const VERSION = '0.5.1';
+/* ESPHealth v0.5.2 | MIT | https://github.com/JRJenZens/ESPHealth */
+export const VERSION = '0.5.2';
 export const THRESHOLD_RULES=['heart_low','heart_high','breath_low','breath_high'];
 export const DEFAULT_ALERTS = {enabled:false,heart_low:null,heart_high:null,breath_low:null,breath_high:null,signal_loss:false,fall:false,delay:30,notify_service:'persistent_notification.create',notification_level:'normal',threshold_version:2,critical_heart_low:null,critical_heart_high:null,critical_breath_low:null,critical_breath_high:null};
 export function normalizeAlerts(value={}) {

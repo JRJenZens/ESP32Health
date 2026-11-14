@@ -1,10 +1,10 @@
-# Validation — Home Assistant app 0.5.1
+# Validation — Home Assistant app 0.5.2
 
 Date: 14 November 2026, Europe/Copenhagen.
 
 ## Software and browser checks
 
-- Python 3.13: 59 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
+- Python 3.13: 60 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
 - Node.js 22: 40 shared sensor, monitor and setup scenarios passed. Covers invalid and unavailable values, distance units, vital-estimate conditions, stale timestamps, configuration validation, conservative discovery, compressed history and CSV escaping. Additional cases cover generic ESP32 model names, Danish radar signatures, explicit manual ESPHome selection, ambiguous readings, device-scoped lists, duplicate prevention and waiting for configuration persistence before history.
 - Browser fixture uses the full app/backend under `/api/hassio_ingress/synthetic/`, with synthetic data and no connection to a real Home Assistant.
 - Verified automatic data loading without URL/token fields, Recorder-shaped history and entity setup. A changed area was saved and remained after reloading the browser.
