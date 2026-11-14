@@ -11,7 +11,7 @@ let pendingSaves=0;
 const showError=message=>{errorBox.textContent=message;errorBox.hidden=!message;};
 async function api(path,options={}) {
   const response=await fetch(path,{...options,credentials:'same-origin',headers:{'X-ESP32Health':'1',...(options.body?{'Content-Type':'application/json'}:{}),...options.headers}});
-  if(!response.ok){const error=new Error(response.status===409?'Opsætningen blev ændret i en anden fane. Den gemte opsætning er genindlæst.':response.status===503?'Home Assistant kunne ikke levere data. Kontrollér forbindelse og Recorder.':'Forespørgslen mislykkedes. Prøv at genindlæse appen.');error.status=response.status;throw error;}
+  if(!response.ok){const detail=await response.json().catch(()=>({}));const error=new Error(response.status===409?'Opsætningen blev ændret i en anden fane. Den gemte opsætning er genindlæst.':detail.error || (response.status===503?'Home Assistant kunne ikke levere data. Kontrollér forbindelse og Recorder.':'Forespørgslen mislykkedes. Prøv at genindlæse appen.'));error.status=response.status;throw error;}
   return response.json();
 }
 async function callWS(command) {
@@ -20,7 +20,7 @@ async function callWS(command) {
   if(command.type==='history/history_during_period')return api('api/history',{method:'POST',body:JSON.stringify(command)});
   throw new Error('Denne læseforespørgsel understøttes ikke.');
 }
-function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS};}
+function updateHass(){dashboard.hass={...latest,configSaving:pendingSaves>0,callWS,notificationTargets:()=>api('api/notification-targets')};}
 async function loadConfig(){const document=await api('api/config');revision=document.revision;dashboard.setConfig(document.config);updateHass();}
 dashboard.addEventListener('esp32health-config-changed',event=>{
   const config=structuredClone(event.detail.config);

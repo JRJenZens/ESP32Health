@@ -1,14 +1,17 @@
-# Validation — Home Assistant app 0.2.1
+# Validation — Home Assistant app 0.3.0
 
 Date: 14 November 2026, Europe/Copenhagen.
 
 ## Software and browser checks
 
-- Python 3.13: 15 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
-- Node.js 22: 26 shared sensor and setup scenarios passed. Covers invalid and unavailable values, distance units, vital-estimate conditions, stale timestamps, configuration validation, conservative discovery, compressed history and CSV escaping. Additional cases cover generic ESP32 model names, Danish radar signatures, explicit manual ESPHome selection, ambiguous readings, device-scoped lists, duplicate prevention and waiting for configuration persistence before history.
+- Python 3.13: 28 backend tests passed. Covers ingress checks, local health endpoint, CSRF header, config validation, atomic persistence/restart, concurrent-edit conflicts, history access scoping, redaction, SSE queue behavior and a real mock WebSocket handshake/state removal/disconnection/reconnection.
+- Node.js 22: 29 shared sensor, monitor and setup scenarios passed. Covers invalid and unavailable values, distance units, vital-estimate conditions, stale timestamps, configuration validation, conservative discovery, compressed history and CSV escaping. Additional cases cover generic ESP32 model names, Danish radar signatures, explicit manual ESPHome selection, ambiguous readings, device-scoped lists, duplicate prevention and waiting for configuration persistence before history.
 - Browser fixture uses the full app/backend under `/api/hassio_ingress/synthetic/`, with synthetic data and no connection to a real Home Assistant.
 - Verified automatic data loading without URL/token fields, Recorder-shaped history and entity setup. A changed area was saved and remained after reloading the browser.
 - Desktop width 1440 and mobile width 390 visually checked; no horizontal overflow at mobile width. Screenshots are synthetic fixtures.
+
+- Advisory alert cases cover explicit opt-in, threshold validation, spatial/freshness gating, independent rates, sustained-condition delays, interruption/rearming, cooldowns, persistence/restart deduplication, distinct notification tags, delivery failure, rule removal and fall signals. HTTP tests verify target validation; a mock bridge checks fixed notification payloads and rejects generic actions.
+- The full synthetic browser fixture saved and triggered a threshold rule, showed the event/delivery log, and kept the save button usable. No live phone notification was sent.
 
 ## Package checks
 
@@ -16,4 +19,4 @@ GitHub Actions validates app configuration with the Home Assistant app linter an
 
 ## Remaining verification
 
-The existing 0.2.0 app was verified through a real Home Assistant Ingress session: device mappings saved and current sensor states and Recorder history were displayed. New 0.2.1 setup controls are also checked with synthetic fixtures. Physical radar accuracy, physical iOS Safari and long-running resource behavior have not been verified. A successful image build and mock-protocol test do not establish radar accuracy or alarm reliability.
+The existing 0.2.0 app was verified through a real Home Assistant Ingress session: device mappings saved and current sensor states and Recorder history were displayed. The 0.2.1 manual device controls were also checked through real Ingress. The 0.3.0 monitor and alerts were checked with synthetic fixtures; real notification delivery is not established by these tests. Physical radar accuracy, physical iOS Safari and long-running resource behavior have not been verified. A successful image build and mock-protocol test do not establish radar accuracy or alarm reliability.

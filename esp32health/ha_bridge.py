@@ -4,6 +4,8 @@ import contextlib
 import logging
 import time
 
+from alerts import valid_target
+
 import aiohttp
 
 _LOG = logging.getLogger(__name__)
@@ -73,8 +75,33 @@ class HABridge:
         self._token = ''
 
     async def call(self, command):
-        if command.get('type') not in READ_COMMANDS:
+        if command.get('type') not in READ_COMMANDS | {'get_services'}:
             raise ValueError('Only explicit read commands are allowed.')
+        return await self._request(command)
+
+    async def notification_targets(self):
+        if not self.connected:
+            raise HAUnavailable('Home Assistant is disconnected.')
+        services = await self.call({'type': 'get_services'})
+        result = [{'id': 'persistent_notification.create', 'name': 'Home Assistant · Notifikationer'}]
+        for service, description in services.get('notify', {}).items():
+            if valid_target('notify.' + service):
+                result.append({'id': 'notify.' + service, 'name': description.get('name') or service})
+        return result
+
+    async def notify(self, service, title, message, tag):
+        # No generic service proxy: fixed notification fields and Companion targets only.
+        if not valid_target(service) or service not in {x['id'] for x in await self.notification_targets()}:
+            raise ValueError('Notification destination is unavailable.')
+        domain, action = service.split('.')
+        data = {'title': title, 'message': message}
+        if domain == 'persistent_notification':
+            data['notification_id'] = 'esp32health_' + tag
+        else:
+            data['data'] = {'tag': 'esp32health_' + tag}
+        await self._request({'type': 'call_service', 'domain': domain, 'service': action, 'service_data': data})
+
+    async def _request(self, command):
         if self._ws is None or self._ws.closed:
             raise HAUnavailable('Home Assistant is disconnected.')
         request_id = self._next_id
@@ -117,7 +144,7 @@ class HABridge:
                     if data.get('success'):
                         future.set_result(data.get('result'))
                     else:
-                        future.set_exception(HAUnavailable('Home Assistant rejected a read request.'))
+                        future.set_exception(HAUnavailable('Home Assistant rejected a request.'))
             elif data.get('type') == 'event' and data.get('event', {}).get('event_type') == 'state_changed':
                 event = data['event'].get('data', {})
                 if self._buffer is not None:

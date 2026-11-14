@@ -1,5 +1,6 @@
-/* ESP32Health v0.2.1 | MIT | https://github.com/JRJenZens/ESP32Health */
-export const VERSION = '0.2.1';
+/* ESP32Health v0.3.0 | MIT | https://github.com/JRJenZens/ESP32Health */
+export const VERSION = '0.3.0';
+export const DEFAULT_ALERTS = {enabled:false,heart_low:null,heart_high:null,breath_low:null,breath_high:null,signal_loss:false,fall:false,delay:30,notify_service:'persistent_notification.create'};
 export const ROLES = {
   MR60BHA2: { presence: 'Tilstedeværelse', heart_rate: 'Puls', breath_rate: 'Vejrtrækning', distance: 'Afstand', num_targets: 'Antal personer (estimat)', illuminance: 'Lysniveau' },
   MR60FDA2: { presence: 'Tilstedeværelse', fall: 'Fald registreret', illuminance: 'Lysniveau' },
@@ -43,16 +44,18 @@ export function validateConfig(config) {
 }
 export function evaluateBHA(device, states, connected = true, now = Date.now(), staleAfter = 180) {
   const s = (key) => states[device.entities[key]];
-  if (!connected) return { kind: 'muted', label: 'Forbindelsen er afbrudt', usable: false };
-  if (binaryState(s('presence')) === false) return { kind: 'muted', label: 'Ingen person registreret', usable: false };
-  if (binaryState(s('presence')) !== true) return { kind: 'warn', label: 'Tilstedeværelse er ukendt', usable: false };
-  if (numberState(s('num_targets')) !== 1) return { kind: 'warn', label: numberState(s('num_targets')) > 1 ? 'Flere personer · usikker måling' : 'Antal personer er ikke bekræftet', usable: false };
+  const blocked = (label,kind='warn') => ({kind,label,usable:false,heart_usable:false,breath_usable:false});
+  if (!connected) return blocked('Forbindelsen er afbrudt','muted');
+  if (binaryState(s('presence')) === false) return blocked('Ingen person registreret','muted');
+  if (binaryState(s('presence')) !== true) return blocked('Tilstedeværelse er ukendt');
+  if (numberState(s('num_targets')) !== 1) return blocked(numberState(s('num_targets')) > 1 ? 'Flere personer · usikker måling' : 'Antal personer er ikke bekræftet');
   const distance = distanceMetres(s('distance'));
-  if (distance === null) return { kind: 'warn', label: 'Afstand eller måleenhed er ukendt', usable: false };
-  if (distance < .5 || distance > 1.5) return { kind: 'warn', label: 'Uden for målezonen på 0,5–1,5 m', usable: false };
-  if (['num_targets', 'distance', 'heart_rate', 'breath_rate'].some(k => readingAge(s(k), now) > staleAfter)) return { kind: 'warn', label: 'Opdateringstid er for gammel eller ukendt', usable: false };
-  if (!(numberState(s('heart_rate')) > 0 && numberState(s('breath_rate')) > 0)) return { kind: 'warn', label: 'Afventer brugbar puls og vejrtrækning', usable: false };
-  return { kind: 'good', label: 'Én person i målezonen', usable: true };
+  if (distance === null) return blocked('Afstand eller måleenhed er ukendt');
+  if (distance < .5 || distance > 1.5) return blocked('Uden for målezonen på 0,5–1,5 m');
+  if (['num_targets', 'distance'].some(k => readingAge(s(k), now) > staleAfter)) return blocked('Afstand eller personantal er for gammelt');
+  const heart_usable=numberState(s('heart_rate'))>0 && readingAge(s('heart_rate'),now)<=staleAfter;
+  const breath_usable=numberState(s('breath_rate'))>0 && readingAge(s('breath_rate'),now)<=staleAfter;
+  return {kind:heart_usable&&breath_usable?'good':'warn',label:heart_usable&&breath_usable?'Én person i målezonen':heart_usable?'Puls modtaget · afventer vejrtrækningssignal':breath_usable?'Vejrtrækning modtaget · afventer pulssignal':'Afventer brugbar puls og vejrtrækning',usable:heart_usable&&breath_usable,heart_usable,breath_usable};
 }
 const rolePatterns = {
   presence: /has_target|people_exist|person_information|presence|tilstede|person information/i,
@@ -122,6 +125,7 @@ export function toCSV(history, devices) {
   return '\uFEFF' + [['timestamp_utc','device','entity_id','metric','state'], ...Object.entries(history).flatMap(([id, rows]) => rows.map(r => [new Date(r.at).toISOString(), metadata.get(id)?.name || '', id, metadata.get(id)?.role || '', r.state]))].map(row => row.map(v => cell(/^[=+@\-\t\r]/.test(String(v)) ? "'" + v : v)).join(',')).join('\r\n');
 }
 const icons = {
+ heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
  pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
  breath: '<path d="M12 3v9m0-4c-3-6-8-1-8 5 0 6 6 6 8 2 2 4 8 4 8-2 0-6-5-11-8-5Z"/>',
  radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="m12 12 7-7"/><circle cx="12" cy="12" r="1"/>',
@@ -140,6 +144,12 @@ const css = `
 @media(prefers-reduced-motion:no-preference){.dot{transition:background .2s}}
 `;
 
+const monitorCSS = `
+.vital-monitor{background:#23181e;color:#f8e8ee;border:1px solid #452733;border-radius:12px;padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:5px 0 14px;overflow:hidden}.monitor-channel{min-width:0}.monitor-channel+.monitor-channel{border-left:1px solid #50313d;padding-left:14px}.monitor-label{font-size:12px;font-weight:600;color:#ffd5de}.monitor-label span{display:block;font-size:9px;color:#b69ba7;font-weight:400;margin-top:2px}.monitor-reading{font-size:48px;font-variant-numeric:tabular-nums;line-height:1.4;letter-spacing:-1px;color:#ffb1c1}.monitor-reading small{display:block;font-size:10px;color:#c1a4ae;letter-spacing:0;margin-top:-5px}.monitor-channel:last-of-type .monitor-reading{color:#dcc3ff}.rhythm{height:44px;display:flex;align-items:center;gap:12px;color:#6d4a58;margin:8px 0 3px}.rhythm svg{width:30px;height:30px}.rhythm-line{height:2px;flex:1;background:currentColor;border-radius:2px;opacity:.3}.rhythm.running{color:#ff8fa8}.rhythm.running svg{animation:heartbeat var(--period) ease-in-out infinite;transform-origin:center}.rhythm.breath_rate.running{color:#c7a6f6}.rhythm.breath_rate.running svg{animation:breathe var(--period) ease-in-out infinite}.monitor-state{font-size:9px;color:#b99da9}.monitor-caption{grid-column:1/-1;font-size:9px;color:#c8aebb;border-top:1px solid #50313d;padding-top:10px;margin:0}.diagnostics{margin-top:14px;border-top:1px solid var(--line);padding-top:11px;font-size:11px;color:#927b80}.diagnostics summary{cursor:pointer;color:#825263;font-weight:600}.diagnostics p{overflow-wrap:anywhere;margin:9px 0}.raw-values{display:flex;gap:25px}.raw-values b{display:block;color:#603f4b}.check{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:#6b4553;margin:16px 0}.check input{width:17px;height:17px;accent-color:#a14e63;flex-shrink:0}.alarm-settings{background:#fff}.alarm-rule{display:flex;flex-direction:column;gap:3px;padding:12px 0;border-bottom:1px solid var(--line);font-size:11px}.alarm-rule span{color:#927b80}.alarm-rule.bad b,.delivery-error{color:#a23944!important}.alarm-settings .note{margin:12px 0}.alarm-settings .btn:disabled{cursor:wait}
+@keyframes heartbeat{0%,40%,100%{transform:scale(1);opacity:.7}12%{transform:scale(1.2);opacity:1}25%{transform:scale(1.03)}30%{transform:scale(1.13)}}@keyframes breathe{0%,100%{transform:scale(.78);opacity:.6}50%{transform:scale(1.14);opacity:1}}
+@media(prefers-reduced-motion:reduce){.rhythm.running svg{animation:none}}
+@container(max-width:480px){.vital-monitor{padding:13px;gap:10px}.monitor-channel+.monitor-channel{padding-left:10px}.monitor-reading{font-size:42px}.monitor-caption{font-size:9px}.nav{gap:5px;padding:8px}.nav span{font-size:10px}.side{gap:1px;padding:12px}.brand{font-size:13px;gap:4px}.brand svg{width:20px}}
+`;
 export class ESP32HealthDashboard extends HTMLElement {
   constructor() {
     super();
@@ -149,8 +159,13 @@ export class ESP32HealthDashboard extends HTMLElement {
     this._signature = ''; this._error = ''; this._historyRequest = 0;
     this._registries={devices:[],entities:[],areas:[]}; this._registryLoaded=false; this._registryPromise=null;
     this._pickerOpen=false; this._pickerDevice=''; this._pickerModel='';
+    this._targets=[{id:'persistent_notification.create',name:'Home Assistant · Notifikationer'}];
+    this._alertDrafts={};this._alarmError='';this._targetsLoaded=false;
+    this._diagnosticOpen=new Set();
     this.shadowRoot.addEventListener('click', e => this._click(e));
     this.shadowRoot.addEventListener('change', e => this._change(e));
+    this.shadowRoot.addEventListener('input', e => {if(e.target.dataset.alertKey)this._change(e);});
+    this.shadowRoot.addEventListener('toggle',e=>{const id=e.target.dataset.diagnostics;if(id){if(e.target.open)this._diagnosticOpen.add(id);else this._diagnosticOpen.delete(id);}},true);
   }
   setConfig(config) {
     validateConfig(config);
@@ -160,12 +175,12 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
-    const signature = this._tab==='devices' ? JSON.stringify([this._connected,Object.entries(hass.states || {}).map(([id,s])=>[id,s.attributes?.friendly_name]),this._config.devices.map(d=>hass.states?.[d.entities.fall]?.state)]) : JSON.stringify([this._connected, this._config.devices.map(d => Object.values(d.entities).map(id => hass.states?.[id]))]);
-    if (signature !== this._signature) { this._signature = signature; this.render(); }
+    const signature = this._tab==='devices' ? JSON.stringify([this._connected,Object.entries(hass.states || {}).map(([id,s])=>[id,s.attributes?.friendly_name]),this._config.devices.map(d=>hass.states?.[d.entities.fall]?.state)]) : JSON.stringify([this._connected, this._config.devices.map(d => [Object.values(d.entities).map(id => [hass.states?.[id]?.state,hass.states?.[id]?.attributes?.unit_of_measurement]),d.model==='MR60BHA2'?evaluateBHA(d,hass.states || {},this._connected,Date.now(),this._config.stale_after || 180):hass.states?.[d.entities.fall]?.last_changed]),hass.alerts]);
+    if (signature !== this._signature) { this._signature = signature; if(this._tab==='alerts')this._refreshAlarmStatus();else this.render(); }
     if (!hass.configSaving && this._historyState === 'idle' && this.isConnected && this._connected && this._config.devices.length) void this.loadHistory();
   }
   connectedCallback() {
-    this._timer = setInterval(() => { if(this._tab!=='devices')this.render(); }, 15000);
+    this._timer = setInterval(() => { if(!['devices','alerts'].includes(this._tab))this.render(); }, 15000);
     this.render();
     if (this._hass && this._historyState === 'idle' && this._config.devices.length) void this.loadHistory();
   }
@@ -253,6 +268,8 @@ export class ESP32HealthDashboard extends HTMLElement {
     const b = e.target.closest('[data-action]'); if (!b) return;
     const action = b.dataset.action;
     if (action === 'tab') {this._tab = b.dataset.tab;this.render();if(this._tab==='devices'&&!this._registryLoaded&&this._connected)void this._loadRegistries().then(()=>this.render()).catch(()=>{});}
+    if(action==='tab' && this._tab==='alerts' && this._connected && !this._targetsLoaded)void this._loadTargets();
+    if(action==='save-alerts')this._saveAlerts(b.dataset.id);
     if (action === 'pick' && this._connected)void this._openPicker();
     if (action === 'close-picker'){this._pickerOpen=false;this.render();}
     if (action === 'add-picked')this._addPickedDevice();
@@ -275,6 +292,7 @@ export class ESP32HealthDashboard extends HTMLElement {
   }
   _change(e) {
     const el = e.target;
+    if(el.dataset.alertKey){const d=this._config.devices.find(x=>x.id===el.dataset.device);const key=el.dataset.alertKey;this._alertDrafts[d.id]={...DEFAULT_ALERTS,...d.alerts,...this._alertDrafts[d.id],[key]:el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value};return;}
     if(el.dataset.pickerDevice){this._pickerDevice=el.value;const d=this._registries.devices.find(x=>x.id===el.value);this._pickerModel=d?inferModel(d,this._registries.entities,this._hass?.states || {}):'';this.render();return;}
     if(el.dataset.pickerModel){this._pickerModel=el.value;this.render();return;}
     if (el.dataset.chartDevice) {this._chartDevice=el.value;this.render();return;}
@@ -282,6 +300,67 @@ export class ESP32HealthDashboard extends HTMLElement {
     const id = el.dataset.device; const key = el.dataset.key; if (!id || !key) return;
     const devices = this._config.devices.map(d => d.id!==id ? d : {...d,...(el.dataset.entity ? {entities:{...d.entities,[key]:el.value}} : {[key]:el.value})});
     this._commit({...this._config,devices});
+  }
+  async _loadTargets() {
+    try {
+      this._targets=await this._hass.notificationTargets();this._targetsLoaded=true;
+      for(const select of this.shadowRoot.querySelectorAll('[data-alert-key="notify_service"]')) {
+        const selected=select.value;select.innerHTML=this._targetOptions(selected);
+      }
+    } catch(_){this._alarmError='Beskedmodtagere kunne ikke hentes. Kontrollér forbindelsen til Home Assistant.';this._refreshAlarmStatus();}
+  }
+  _targetOptions(selected) {
+    const targets=[...this._targets];if(selected&&!targets.some(x=>x.id===selected))targets.push({id:selected,name:selected+' · ikke fundet'});
+    return targets.map(x=>`<option value="${escapeHTML(x.id)}" ${x.id===selected?'selected':''}>${escapeHTML(x.name)}</option>`).join('');
+  }
+  _saveAlerts(id) {
+    const device=this._config.devices.find(x=>x.id===id);const a={...DEFAULT_ALERTS,...device.alerts,...this._alertDrafts[id]};
+    for(const el of this.shadowRoot?.querySelectorAll('[data-alert-key]') || [])if(el.dataset.device===id)a[el.dataset.alertKey]=el.type==='checkbox'?el.checked:el.type==='number'?(el.value===''?null:Number(el.value)):el.value;
+    let error='';
+    if(!Number.isInteger(a.delay)||a.delay<5||a.delay>600)error='Vælg en forsinkelse på 5–600 sekunder.';
+    for(const role of ['heart','breath']) {
+      const low=a[role+'_low'],high=a[role+'_high'],max=role==='heart'?300:100;
+      if([low,high].some(n=>n!==null&&(!Number.isFinite(n)||n<=0||n>max)))error='Angiv positive grænser inden for feltets interval, eller lad feltet stå tomt.';
+      if(low!==null&&high!==null&&low>=high)error='Den nedre grænse skal være lavere end den øvre.';
+    }
+    if(a.enabled&&!a.signal_loss&&!a.fall&&['heart_low','heart_high','breath_low','breath_high'].every(k=>a[k]===null))error='Vælg mindst én regel, før du slår alarmer til.';
+    this._alarmError=error;
+    if(error){this._refreshAlarmStatus();return;}
+    delete this._alertDrafts[id];
+    this._commit({...this._config,devices:this._config.devices.map(d=>d.id===id?{...d,alerts:a}:d)});
+  }
+  _alarmStatus() {
+    const status={watching:'Overvåger',paused:'Afventer brugbart signal',pending:'Afventer forsinkelse',active:'Aktiv hændelse'};
+    const delivery={sent:'Besked accepteret af Home Assistant',failed:'Beskeden kunne ikke sendes · kontrollér Home Assistant og modtageren',uncertain:'Levering uafklaret efter afbrydelse',cooldown:'Besked begrænset · højst én pr. regel hvert 5. minut',pending:'Afventer afsendelse'};
+    const alerts=this._hass?.alerts || {rules:[],events:[]};
+    return `${this._hass?.alerts?.running===false?'<div class="error" role="alert">Alarmkontrollen kører ikke. Genstart appen og kontrollér loggen.</div>':''}${this._alarmError?`<div class="error" role="alert">${escapeHTML(this._alarmError)}</div>`:''}<div class="alarm-rules">${alerts.rules?.map(r=>`<div class="alarm-rule ${r.state==='active'?'bad':''}"><b>${escapeHTML(this._config.devices.find(d=>d.id===r.device_id)?.name)} · ${escapeHTML(r.label)}</b><span>${status[r.state] || 'Ukendt'}${r.reason?' · '+escapeHTML(r.reason):''}</span></div>`).join('') || '<p class="note">Ingen aktive alarmregler. Vælg dine indstillinger og gem dem nedenfor.</p>'}</div><h2 style="margin-top:18px">Seneste hændelser</h2>${alerts.events?.map(e=>`<div class="alarm-rule"><b>${new Date(e.at*1000).toLocaleString('da-DK')} · ${escapeHTML(e.name)} · ${escapeHTML(e.label)}</b><span>${escapeHTML(e.reason)}</span><span class="${e.delivery==='failed'?'delivery-error':''}">${delivery[e.delivery] || 'Ukendt levering'}${e.ended_at?' · Reglen er ikke længere aktiv':''}</span></div>`).join('') || '<p class="note">Ingen hændelser i den lokale alarmlog.</p>'}`;
+  }
+  _refreshAlarmStatus() {
+    const target=this.shadowRoot.querySelector('#alarm-status');if(target)target.innerHTML=this._alarmStatus();
+    for(const button of this.shadowRoot.querySelectorAll('[data-action="save-alerts"]'))button.disabled=Boolean(this._hass?.configSaving);
+  }
+  _alarms() {
+    return `<section class="panel" style="margin-top:0"><h2>Dine alarmregler</h2><p class="note">Reglerne kører i Home Assistant-appen, også når denne side er lukket. Vælg selv grænser; der er ingen anbefalede medicinske standardgrænser. Gem hver enhed for at aktivere ændringer.</p><p class="note">En manglende vejrtrækningsmåling kan skyldes bevægelse, placering eller tabt forbindelse. Den dokumenterer ikke vejrtrækningsstop. Appen kan ikke erstatte medicinsk overvågning eller tilkalde akut hjælp.</p><div id="alarm-status">${this._alarmStatus()}</div></section><div class="device-list" style="margin-top:18px">${this._config.devices.map(d=>{
+      const a={...DEFAULT_ALERTS,...d.alerts,...this._alertDrafts[d.id]};
+      const check=(key,label)=>`<label class="check"><input type="checkbox" data-device="${escapeHTML(d.id)}" data-alert-key="${key}" ${a[key]?'checked':''}>${label}</label>`;
+      const input=(key,label,max)=>`<label class="field">${label}<input type="number" min="1" max="${max}" step="1" placeholder="Ingen grænse" data-device="${escapeHTML(d.id)}" data-alert-key="${key}" value="${a[key]===null?'':a[key]}"></label>`;
+      return `<section class="settings-device alarm-settings"><h2>${escapeHTML(d.name)}</h2>${check('enabled','Slå alarmer til for denne enhed')}<div class="fields">${d.model==='MR60BHA2'?input('heart_low','Puls under · slag/min',300)+input('heart_high','Puls over · slag/min',300)+input('breath_low','Vejrtrækning under · åndedrag/min',100)+input('breath_high','Vejrtrækning over · åndedrag/min',100):''}<label class="field">Varighed før besked · sekunder<input type="number" min="5" max="600" step="1" data-device="${escapeHTML(d.id)}" data-alert-key="delay" value="${a.delay}"></label><label class="field">Beskedmodtager<select data-device="${escapeHTML(d.id)}" data-alert-key="notify_service">${this._targetOptions(a.notify_service)}</select></label></div>${check('signal_loss',d.model==='MR60BHA2'?'Giv besked ved manglende målesignal, nulmåling eller forkerte målebetingelser':'Giv besked, hvis faldsignalet bliver utilgængeligt')}${d.model==='MR60FDA2'?check('fall','Giv besked ved muligt fald'):''}<p class="note">Grænseregler kræver tilgængelige målinger i målezonen. Forsinkelsen starter forfra ved afbrydelse. Én besked pr. hændelse, højst én pr. regel hvert 5. minut. En accepteret besked er ikke en kvittering fra telefonen. Ved afsendelsesfejl vises fejlen i loggen; der forsøges igen ved næste hændelse.</p><button class="btn primary" data-action="save-alerts" data-id="${escapeHTML(d.id)}" ${this._hass?.configSaving?'disabled':''}>Gem alarmindstillinger</button></section>`;
+    }).join('')}</div>`;
+  }
+  _vitalMonitor(d, quality) {
+    const states=this._hass?.states || {};
+    const row=(role,label,unit,usable,symbol)=>{
+      const n=numberState(states[d.entities[role]]);
+      // This is a frequency-based illustration, never a sampled heartbeat/ECG waveform.
+      const duration=usable?60/n:1;
+      return `<div class="monitor-channel"><div class="monitor-label">${label}<span>Radar · estimat</span></div><div class="monitor-reading">${usable?fmt(n):'—'}<small>${unit}</small></div><div class="rhythm ${usable?'running':''} ${role}" style="--period:${duration.toFixed(3)}s" aria-hidden="true">${icon(symbol)}<span class="rhythm-line"></span></div><div class="monitor-state">${usable?'Frekvens modtaget':'Intet brugbart signal'}</div></div>`;
+    };
+    return `<section class="vital-monitor" aria-label="Puls- og vejrtrækningsmonitor">${row('heart_rate','Puls','slag/min',quality.heart_usable,'heart')}${row('breath_rate','Vejrtrækning','åndedrag/min',quality.breath_usable,'breath')}<p class="monitor-caption">Rytmeanimation ud fra frekvens · ikke EKG eller målte hjerteslag</p></section>`;
+  }
+  _diagnostics(d, quality) {
+    const states=this._hass?.states || {};
+    const raw=role=>{const s=states[d.entities[role]];if(!this._connected)return 'Afbrudt';const n=numberState(s);return n===null?'Ukendt':fmt(n,1);};
+    return `<details class="diagnostics" data-diagnostics="${escapeHTML(d.id)}" ${this._diagnosticOpen?.has(d.id)?'open':''}><summary>Hvorfor vises der streger? · Sensorens rådata</summary><p>${escapeHTML(quality.label)}. Sid stille med overkroppen rettet mod en stabil radar, 0,5–1,5 m væk.</p><div class="raw-values"><span>Rå puls <b>${raw('heart_rate')}</b></span><span>Rå vejrtrækning <b>${raw('breath_rate')}</b></span></div><p>0 betyder, at radaren ikke leverer en brugbar frekvens. Det betyder ikke en bekræftet puls eller vejrtrækning på nul.</p>${['heart_rate','breath_rate','distance','num_targets'].map(role=>{const s=states[d.entities[role]];const age=readingAge(s);return `<p>${ROLES[d.model][role]} · ${escapeHTML(d.entities[role] || 'Ikke valgt')}<br>Senest rapporteret: ${this._connected&&Number.isFinite(age)?fmt(age)+' sekunder siden':'Ukendt'}</p>`;}).join('')}<p>Ved stabile tal skal ESPHome sende gentagne målinger med force_update: true. Appen kan ikke bekræfte, om selve radarens estimat er nyt.</p></details>`;
   }
   _device(d) {
     const states = this._hass?.states || {}; const s = key => states[d.entities[key]];
@@ -295,11 +374,11 @@ export class ESP32HealthDashboard extends HTMLElement {
     if(d.model==='MR60BHA2') {
       const quality = evaluateBHA(d,states,this._connected,Date.now(),this._config.stale_after || 180);
       const distance = this._connected ? distanceMetres(s('distance')) : null;
-      return `<article class="device">${header}<div class="sensor-body"><div class="measurements"><div><div class="metric-label">${icon('pulse')}Puls</div><div class="number">${quality.usable?fmt(numberState(s('heart_rate'))):'—'}<span>slag/min</span></div><div class="hint">Radarens estimat</div></div><div><div class="metric-label">${icon('breath')}Vejrtrækning</div><div class="number">${quality.usable?fmt(numberState(s('breath_rate'))):'—'}<span>åndedrag/min</span></div><div class="hint">Radarens estimat</div></div></div><div class="status ${quality.kind}"><i class="dot"></i>${quality.label}</div>${details([['Tilstedeværelse',presenceLabel],['Antal (estimat)',this._connected?fmt(numberState(s('num_targets'))):'—'],['Afstand',distance===null?'Ukendt':fmt(distance,2)+' m'],['Lys',lux===null?'—':fmt(lux)+' lx']])}<p class="hint" style="margin-top:13px">Person og radar skal være i ro. Stilleståen og sensorens målekvalitet kan ikke bekræftes af appen.</p></div></article>`;
+      return `<article class="device">${header}<div class="sensor-body">${this._vitalMonitor(d,quality)}<div class="status ${quality.kind}"><i class="dot"></i>${quality.label}</div>${details([['Tilstedeværelse',presenceLabel],['Antal (estimat)',this._connected?fmt(numberState(s('num_targets'))):'—'],['Afstand',distance===null?'Ukendt':fmt(distance,2)+' m'],['Lys',lux===null?'—':fmt(lux)+' lx']])}${this._diagnostics(d,quality)}<p class="hint" style="margin-top:13px">Person og radar skal være i ro. Stilleståen og sensorens målekvalitet kan ikke bekræftes af appen.</p></div></article>`;
     }
     const fall = this._connected ? binaryState(s('fall')) : null;
     const kind = fall===true?'bad':fall===false?'good':'muted';
-    return `<article class="device">${header}<div class="sensor-body"><div class="fall-visual ${kind}"><div class="ring">${icon('shield')}</div><strong>${fall===true?'Muligt fald registreret':fall===false?'Intet fald registreret':'Faldstatus er ukendt'}</strong><div class="hint">${fall===true?'Kontrollér personen og omgivelserne':fall===false?'Sensorens aktuelle registrering':'Kontrollér forbindelse og valg af entitet'}</div></div><div class="status ${kind}"><i class="dot"></i>${fall===true?'Faldsignalet er aktivt':fall===false?'Faldsignalet er inaktivt':'Intet tilgængeligt faldsignal'}</div>${details([['Tilstedeværelse',presenceLabel],['Lys',lux===null?'—':fmt(lux)+' lx'],['Status ændret',this._connected&&s('fall')?time(s('fall').last_changed):'—']])}<p class="hint" style="margin-top:13px">Notifikationer opsættes i Home Assistant.</p></div></article>`;
+    return `<article class="device">${header}<div class="sensor-body"><div class="fall-visual ${kind}"><div class="ring">${icon('shield')}</div><strong>${fall===true?'Muligt fald registreret':fall===false?'Intet fald registreret':'Faldstatus er ukendt'}</strong><div class="hint">${fall===true?'Kontrollér personen og omgivelserne':fall===false?'Sensorens aktuelle registrering':'Kontrollér forbindelse og valg af entitet'}</div></div><div class="status ${kind}"><i class="dot"></i>${fall===true?'Faldsignalet er aktivt':fall===false?'Faldsignalet er inaktivt':'Intet tilgængeligt faldsignal'}</div>${details([['Tilstedeværelse',presenceLabel],['Lys',lux===null?'—':fmt(lux)+' lx'],['Status ændret',this._connected&&s('fall')?time(s('fall').last_changed):'—']])}<p class="hint" style="margin-top:13px">Vælg beskeder under Alarmer i ESP32Health.</p></div></article>`;
   }
   _chart() {
     if (this._historyState==='loading') return '<div class="chart-empty" role="status">Henter historik fra Home Assistant…</div>';
@@ -345,7 +424,7 @@ export class ESP32HealthDashboard extends HTMLElement {
     const activeFalls=this._connected?devices.filter(d=>binaryState(states[d.entities.fall])===true):[];
     const present=this._connected?devices.filter(d=>binaryState(states[d.entities.presence])===true).length:0;
     const mapped=devices.filter(d=>Object.values(d.entities).some(Boolean)).length;
-    this.shadowRoot.innerHTML=`<style>${css}</style><ha-card><div class="shell"><aside class="side"><div class="brand">${icon('pulse')}<span>ESP32<span>Health</span></span></div><div class="caption">Dit overblik</div>${[['overview','grid','Overblik'],['history','history','Historik'],['devices','settings','Enheder']].map(([id,i,label])=>`<button class="nav ${this._tab===id?'active':''}" data-action="tab" data-tab="${id}" aria-label="${label}" aria-pressed="${this._tab===id}">${icon(i)}<span>${label}</span></button>`).join('')}<div class="side-foot"><strong>Lokalt. Kontaktløst. Dit.</strong>ESPHome → Home Assistant<br>ESP32Health ${VERSION}</div></aside><main class="body"><div class="topbar"><div class="breadcrumb">Dit hjem <span aria-hidden="true">/</span> <b>${this._tab==='overview'?'Overblik':this._tab==='history'?'Historik':'Enheder'}</b></div><span class="pill ${this._connected?'':'muted'}"><i class="dot"></i>${this._connected?'Home Assistant tilsluttet':'Home Assistant afbrudt'}</span></div><div class="heading"><div><div class="caption">ESP32Health</div><h1>${escapeHTML(this._tab==='overview'?(this._config.title || 'Dit hjem, i overblik'):this._tab==='history'?'Se tilbage på målingerne':'Dine enheder')}</h1><p class="sub">${this._tab==='overview'?'Kontaktløs registrering af puls, vejrtrækning og mulige fald.':this._tab==='history'?'Se registrerede sensorværdier og hent dem som CSV.':'Forbind dine Seeed-radarer med de rigtige sensordata.'}</p></div>${this._tab==='overview'?`<button class="btn" data-action="tab" data-tab="devices">${icon('settings')}Enheder</button>`:''}</div>${!this._connected&&devices.length?'<div class="alert" role="status">Liveforbindelsen er afbrudt. Aktuel puls, vejrtrækning og faldstatus kan ikke vises.</div>':''}${activeFalls.map(d=>`<div class="alert" role="alert">${icon('shield')}<div><b>Muligt fald · ${escapeHTML(d.name)}</b><br>Kontrollér personen og omgivelserne. Sensorens faldsignal er aktivt.</div></div>`).join('')}${this._tab==='devices'?this._settings():!devices.length?`<div class="panel empty">${icon('radar')}<h2>Giv dine sensorer en plads</h2><p class="sub">Tilføj en MR60BHA2 til puls og vejrtrækning<br>eller en MR60FDA2 til faldregistrering.</p><button class="btn primary" data-action="tab" data-tab="devices">Opsæt enheder ${icon('arrow')}</button></div>`:this._tab==='history'?this._historyPanel()+this._events():`<div class="summary"><div class="stat"><small>Enheder i overblikket</small><strong>${devices.length.toString().padStart(2,'0')}</strong><em>${mapped} med valgte entiteter</em></div><div class="stat"><small>Radarer med tilstedeværelse</small><strong>${this._connected?present.toString().padStart(2,'0'):'—'}</strong><em>Dette er ikke et persontal</em></div><div class="stat"><small>Aktive faldsignaler</small><strong>${this._connected?activeFalls.length.toString().padStart(2,'0'):'—'}</strong><em>Kun tilgængelige signaler</em></div><div class="stat"><small>Datakilde</small><strong style="font-size:17px;margin-top:13px">Home Assistant</strong><em>Ingen ekstra datasky</em></div></div><div class="section-head"><h2>Rum & sensorer</h2><span>${devices.length} enheder</span></div><div class="devices">${devices.map(d=>this._device(d)).join('')}</div>${this._historyPanel()}`}<footer class="bottom"><span>Sensorestimater · Ikke medicinsk udstyr eller et alarmsystem</span><span>Historik opdateres med knappen Opdatér</span></footer></main></div></ha-card>`;
+    this.shadowRoot.innerHTML=`<style>${css}${monitorCSS}</style><ha-card><div class="shell"><aside class="side"><div class="brand">${icon('pulse')}<span>ESP32<span>Health</span></span></div><div class="caption">Dit overblik</div>${[['overview','grid','Overblik'],['history','history','Historik'],['alerts','shield','Alarmer'],['devices','settings','Enheder']].map(([id,i,label])=>`<button class="nav ${this._tab===id?'active':''}" data-action="tab" data-tab="${id}" aria-label="${label}" aria-pressed="${this._tab===id}">${icon(i)}<span>${label}</span></button>`).join('')}<div class="side-foot"><strong>Lokalt. Kontaktløst. Dit.</strong>ESPHome → Home Assistant<br>ESP32Health ${VERSION}</div></aside><main class="body"><div class="topbar"><div class="breadcrumb">Dit hjem <span aria-hidden="true">/</span> <b>${this._tab==='overview'?'Overblik':this._tab==='history'?'Historik':this._tab==='alerts'?'Alarmer':'Enheder'}</b></div><span class="pill ${this._connected?'':'muted'}"><i class="dot"></i>${this._connected?'Home Assistant tilsluttet':'Home Assistant afbrudt'}</span></div><div class="heading"><div><div class="caption">ESP32Health</div><h1>${escapeHTML(this._tab==='overview'?(this._config.title || 'Dit hjem, i overblik'):this._tab==='history'?'Se tilbage på målingerne':this._tab==='alerts'?'Alarmer, du selv vælger':'Dine enheder')}</h1><p class="sub">${this._tab==='overview'?'Kontaktløs registrering af puls, vejrtrækning og mulige fald.':this._tab==='history'?'Se registrerede sensorværdier og hent dem som CSV.':this._tab==='alerts'?'Grænser, signaltab og beskeder via Home Assistant.':'Forbind dine Seeed-radarer med de rigtige sensordata.'}</p></div>${this._tab==='overview'?`<button class="btn" data-action="tab" data-tab="devices">${icon('settings')}Enheder</button>`:''}</div>${!this._connected&&devices.length?'<div class="alert" role="status">Liveforbindelsen er afbrudt. Aktuel puls, vejrtrækning og faldstatus kan ikke vises.</div>':''}${(this._hass?.alerts?.rules || []).filter(r=>r.state==='active'&&r.rule!=='fall').map(r=>`<div class="alert" role="alert"><div><b>${escapeHTML(this._config.devices.find(d=>d.id===r.device_id)?.name)} · ${escapeHTML(r.label)}</b><br>${escapeHTML(r.reason)} Kontrollér personen og sensoren.</div></div>`).join('')}${activeFalls.map(d=>`<div class="alert" role="alert">${icon('shield')}<div><b>Muligt fald · ${escapeHTML(d.name)}</b><br>Kontrollér personen og omgivelserne. Sensorens faldsignal er aktivt.</div></div>`).join('')}${this._tab==='devices'?this._settings():this._tab==='alerts'?this._alarms():!devices.length?`<div class="panel empty">${icon('radar')}<h2>Giv dine sensorer en plads</h2><p class="sub">Tilføj en MR60BHA2 til puls og vejrtrækning<br>eller en MR60FDA2 til faldregistrering.</p><button class="btn primary" data-action="tab" data-tab="devices">Opsæt enheder ${icon('arrow')}</button></div>`:this._tab==='history'?this._historyPanel()+this._events():`<div class="summary"><div class="stat"><small>Enheder i overblikket</small><strong>${devices.length.toString().padStart(2,'0')}</strong><em>${mapped} med valgte entiteter</em></div><div class="stat"><small>Radarer med tilstedeværelse</small><strong>${this._connected?present.toString().padStart(2,'0'):'—'}</strong><em>Dette er ikke et persontal</em></div><div class="stat"><small>Aktive faldsignaler</small><strong>${this._connected?activeFalls.length.toString().padStart(2,'0'):'—'}</strong><em>Kun tilgængelige signaler</em></div><div class="stat"><small>Datakilde</small><strong style="font-size:17px;margin-top:13px">Home Assistant</strong><em>Ingen ekstra datasky</em></div></div><div class="section-head"><h2>Rum & sensorer</h2><span>${devices.length} enheder</span></div><div class="devices">${devices.map(d=>this._device(d)).join('')}</div>${this._historyPanel()}`}<footer class="bottom"><span>Sensorestimater · Ikke medicinsk udstyr eller et medicinsk alarmsystem</span><span>Historik opdateres med knappen Opdatér</span></footer></main></div></ha-card>`;
   }
 }
 customElements.define('esp32health-dashboard',ESP32HealthDashboard);

@@ -1,3 +1,14 @@
+# 0.3.0
+
+- Monitor med store tal og frekvensbaseret animation, tydeligt adskilt fra EKG.
+- Vis puls og vejrtrækning uafhængigt, når den enkelte måling er brugbar.
+- Forklaring af streger, rå frekvenser og opdateringstider under hver BHA2-radar.
+- Valgfrie grænser, varighed, signaltab og faldsignaler med lokal hændelseslog.
+- Alarmkontrol i backend, også når web-UI er lukket; alt er slået fra som standard.
+- Beskeder til Home Assistant eller en valgt Companion-app gennem en afgrænset backendfunktion.
+- Deduplikering, fem minutters beskedbegrænsning pr. regel og synlige afsendelsesfejl.
+- Ingen medicinske standardgrænser. Manglende signal behandles aldrig som bekræftet vejrtrækningsstop.
+
 # 0.2.1
 
 - Vælg en fysisk ESPHome-enhed manuelt fra Home Assistants enhedsregister.

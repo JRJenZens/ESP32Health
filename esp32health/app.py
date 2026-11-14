@@ -11,8 +11,9 @@ from pathlib import Path
 from aiohttp import web
 
 from ha_bridge import HABridge, HAUnavailable
+from alerts import AlertEngine, validate_alerts
 
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 WEB = Path(__file__).parent / 'web'
 ROLES = {
     'MR60BHA2': {'presence', 'heart_rate', 'breath_rate', 'distance', 'num_targets', 'illuminance'},
@@ -50,6 +51,8 @@ def validate_config(value):
             if not isinstance(entity_id, str) or (entity_id and not re.fullmatch(domain + r'\.[a-z0-9_]+', entity_id)):
                 raise ValueError('Forkert entitet til ' + role + '.')
         row['entities'] = dict(entities)
+        if 'alerts' in device:
+            row['alerts'] = validate_alerts(device['alerts'], row['model'])
         result['devices'].append(row)
     return result
 
@@ -109,6 +112,7 @@ class SnapshotHub:
 STORE_KEY = web.AppKey('store', ConfigStore)
 BRIDGE_KEY = web.AppKey('bridge', object)
 HUB_KEY = web.AppKey('hub', SnapshotHub)
+ALERTS_KEY = web.AppKey('alerts', AlertEngine)
 
 def history_command(value, allowed_ids):
     if not isinstance(value, dict):
@@ -135,6 +139,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     store = ConfigStore(config_path)
     hub = SnapshotHub()
     ha = bridge if bridge is not None else HABridge(token or os.environ.get('SUPERVISOR_TOKEN', ''))
+    alerts = AlertEngine(Path(config_path).with_name('alerts.json'), ha.notify)
 
     def snapshot():
         selected = store.entity_ids()
@@ -146,7 +151,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
                 # Manual selectors need names/units, not unrelated sensor values.
                 states[entity_id] = {'entity_id': entity_id, 'state': 'unknown',
                                      'attributes': state.get('attributes', {})}
-        return {'connected': ha.connected, 'states': states}
+        return {'connected': ha.connected, 'states': states, 'alerts': alerts.snapshot()}
 
     last_snapshot = None
 
@@ -174,7 +179,9 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
 
     app = web.Application(middlewares=[protect], client_max_size=128 * 1024)
     app[STORE_KEY], app[BRIDGE_KEY], app[HUB_KEY] = store, ha, hub
+    app[ALERTS_KEY] = alerts
     ha.on_change = changed
+    alerts.on_change = changed
 
     async def headers(request, response):
         response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -186,10 +193,12 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
 
     async def lifecycle(application):
         await ha.start()
+        alerts.start(lambda: store.config, ha)
         try:
             yield
         finally:
             hub.publish(None)
+            await alerts.close()
             await ha.close()
 
     async def shutdown(application):
@@ -206,6 +215,11 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
         value = await request.json()
         if not isinstance(value, dict):
             raise ValueError('Ugyldig konfiguration.')
+        clean = validate_config(value.get('config'))
+        if any(d.get('alerts', {}).get('enabled') for d in clean['devices']):
+            targets = {x['id'] for x in await ha.notification_targets()}
+            if any(d.get('alerts', {}).get('enabled') and d['alerts']['notify_service'] not in targets for d in clean['devices']):
+                raise ValueError('Den valgte beskedmodtager findes ikke længere i Home Assistant.')
         document = store.save(value.get('config'), value.get('revision'))
         changed()
         return web.json_response(document)
@@ -217,6 +231,9 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     async def history(request):
         command = history_command(await request.json(), store.entity_ids())
         return web.json_response(await ha.call(command))
+
+    async def targets(request):
+        return web.json_response(await ha.notification_targets())
 
     async def events(request):
         response = web.StreamResponse(headers={'Content-Type': 'text/event-stream', 'X-Accel-Buffering': 'no'})
@@ -252,6 +269,7 @@ def create_app(*, config_path='/data/config.json', bridge=None, local=False, tok
     app.add_routes([web.get('/health', health), web.get('/api/config', config_get),
                     web.put('/api/config', config_put), web.get('/api/events', events),
                     web.get('/api/registry/{kind:device|entity|area}', registry_get),
+                    web.get('/api/notification-targets', targets),
                     web.post('/api/history', history), web.get('/', asset), web.get('/{name}', asset)])
     return app
 

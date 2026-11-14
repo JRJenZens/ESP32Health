@@ -24,11 +24,21 @@ Kræver Home Assistant OS eller en Supervisor-installation med Apps. Sensorerne 
 - **MR60FDA2:** tilstedeværelse, aktuelt faldsignal og eventuelt lysniveau.
 - Flere radarer med separate navne, områder og entitetskoblinger.
 - Manuel liste over ESPHome-enheder og radarmodelvalg. Sensorvalg afgrænses til den valgte fysiske enhed; generiske ESP32-modelnavne og danske sensornavne understøttes.
-- Liveopdateringer, automatisk genforbindelse og tydelig ukendt status ved manglende data.
+- Liveopdateringer, automatisk genforbindelse og rådata med forklaring, når målinger mangler.
+- Monitor med store tal og frekvensbaseret rytmeanimation, tydeligt mærket som illustration og ikke EKG.
+- Valgfrie grænser for høj/lav puls og vejrtrækning, manglende signal og muligt fald. Beskeder til Home Assistant eller en valgt Companion-app.
 - Recorder-historik for 1, 6, 12 eller 24 timer samt CSV-eksport.
 - Bordeaux og rosa design, som tilpasser sig computer, iPhone og iPad.
 
-Appen bruger Home Assistants interne API gennem Supervisor. Login og adgang til web-UI håndteres gennem Ingress. Opsætningen ligger i appens private `/data/config.json` og følger med en sikkerhedskopi af appen. Målehistorik bliver i Home Assistant Recorder; ESP32Health opretter ikke en ekstra helbredsdatabase. [Teknisk dokumentation om Ingress](https://contributors.home-assistant.io/apps/guides/ingress/).
+Appen bruger Home Assistants interne API gennem Supervisor. Login og adgang til web-UI håndteres gennem Ingress. Opsætningen ligger i appens private `/data/config.json` og følger med en sikkerhedskopi af appen. Målehistorik bliver i Home Assistant Recorder; Appen gemmer en lokal log over de seneste 50 alarmhændelser i `/data/alerts.json`. [Teknisk dokumentation om Ingress](https://contributors.home-assistant.io/apps/guides/ingress/).
+
+## Valgfrie alarmregler
+
+Åbn **Alarmer**, vælg dine egne grænser, forsinkelse og beskedmodtager, markér **Slå alarmer til**, og tryk **Gem alarmindstillinger** for hver radar. Alt er slået fra ved installation; tomme grænser betyder ingen regel. Regler kører i appen, også når web-UI er lukket, men kræver en kørende app og Home Assistant. Grænser vurderes kun ved brugbare målinger. Signaltabsreglen dækker også nul, ingen person, forkert målezone og afbrudt forbindelse.
+
+En betingelse skal vare hele forsinkelsen (5–600 sekunder). Der sendes én besked pr. hændelse og højst én pr. regel hvert femte minut. Forsinkelsen starter forfra efter genstart eller afbrydelse; allerede udløste hændelser deduplikeres efter genstart. Leveringsfejl eller uafklaret afsendelse vises i loggen og gentages ikke automatisk. En accepteret HA-handling bekræfter ikke levering til telefonen.
+
+Appen er ikke en medicinsk alarm eller et nødopkaldssystem. Vælg grænser efter dit konkrete behov; der er ingen anbefalede medicinske standardgrænser.
 
 ## Overgang fra version 0.1
 
@@ -42,7 +52,7 @@ Aktuelle BHA2-vitalestimater vises kun ved registreret tilstedeværelse, ét est
 
 `last_reported` bruges, hvis det er tilgængeligt, ellers `last_updated`. Stabilt gentagne tal kan derfor blive skjult konservativt. `force_update` på de numeriske ESPHome-sensorer kan hjælpe med opdateringstider, men kan øge Recorder-skrivninger og beviser ikke, at radarens estimat er nyt. Se [ESPHome-fragmenter](examples/esphome-entities.yaml).
 
-Sensorerne kan fastholde gamle estimater, og appen kan ikke bekræfte stilleståen eller signalets kvalitet. Historik og CSV viser rå Recorder-værdier. ESP32Health er ikke medicinsk udstyr eller et certificeret alarmsystem og sender ikke selv alarmnotifikationer. [Enhedsnoter og kilder](docs/devices.md).
+Sensorerne kan fastholde gamle estimater, og appen kan ikke bekræfte stilleståen eller signalets kvalitet. Historik og CSV viser rå Recorder-værdier. ESP32Health er ikke medicinsk udstyr eller et certificeret alarmsystem og kan sende vejledende beskeder efter dine egne regler. Manglende signal dokumenterer ikke vejrtrækningsstop. [Enhedsnoter og kilder](docs/devices.md).
 
 ## Udvikling og afprøvning
 

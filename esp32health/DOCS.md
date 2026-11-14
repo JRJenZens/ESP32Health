@@ -34,16 +34,26 @@ Appen forsøger selv at forbinde igen. Kontrollér, at Home Assistant og ESPHome
 
 Hvis appen ikke starter, læs fanen **Log** på appens side. Et eventuelt problem med opbygning af containeren ses i installationsloggen. Inkludér ikke tokens eller personlige måledata i offentlige fejlrapporter.
 
+## Monitor og fejlsøgning
+
+Den mørke monitor viser estimerede frekvenser. Animationen følger frekvensen og er ikke EKG eller registrerede enkelte hjerteslag. Den stopper, når et signal ikke er brugbart. En brugbar puls kan vises, selv om vejrtrækningsmålingen mangler, og omvendt.
+
+Åbn **Hvorfor vises der streger? · Sensorens rådata** under radaren. Her ses rå frekvenser, de valgte entiteter og deres opdateringstider. 0 fra radaren er ikke en bekræftet fysiologisk måling på nul. Ret en stabil radar mod en enkelt stillesiddende persons overkrop inden for 0,5–1,5 m. Ved stabile tal kan `force_update: true` hjælpe; brug eksempelvis `throttle: 5s` før timeout-filteret for at begrænse Recorder-skrivninger. Se YAML-fragmentet i repository.
+
 ## Målebetingelser
 
 MR60BHA2 skal have én person i ro og korrekt afstand. Appen kræver positive og nylige tal samt en estimeret afstand på 0,5–1,5 m for at vise aktuelle vitalestimater. Radaren kan fastholde et gammelt estimat; opdateringstid er ikke en garanti for målekvalitet.
 
 MR60FDA2 skal være monteret og kalibreret korrekt i ESPHome/Home Assistant. Appen ændrer ikke højde, følsomhed, firmware eller andre fysiske indstillinger.
 
-Notifikationer og alarmhandlinger opsættes særskilt i Home Assistant. Appen viser sensorestimater og er ikke medicinsk udstyr eller et certificeret alarmsystem.
+Under **Alarmer** vælger du dine egne grænser og en varighed, beskedmodtager og **Slå alarmer til**. Tryk **Gem alarmindstillinger** for hver enhed og vent på **Opsætning gemt**. Tomme grænser er inaktive. Alle regler er slået fra, indtil du aktiverer dem. Modtagere er Home Assistants notifikationer eller en tilgængelig Companion-app.
+
+Alarmkontrollen kører i appen, selv om browseren er lukket. Appen og Home Assistant skal være startet og tilgængelige; stop, opdatering, genstart eller strømsvigt giver et hul i kontrollen. Grænseregler kræver brugbare målebetingelser. Valgfrit signaltab omfatter også ingen person, nulmåling, forkert afstand og afbrudt forbindelse. Det er ikke en bekræftet vejrtrækningspause.
+
+Forsinkelsen kan sættes til 5–600 sekunder og starter forfra ved afbrydelse eller genstart. Der sendes én besked pr. hændelse, højst én pr. regel hvert femte minut. Loggen viser op til 50 hændelser, herunder afsendelsesfejl og uafklaret levering efter afbrydelse. Der forsøges ikke automatisk igen ved fejl; kontrollér modtager og HA, og afprøv næste hændelse. Home Assistants accept er ikke en kvittering fra telefonen. Appen er ikke medicinsk udstyr eller et medicinsk alarmsystem.
 
 ## Opdatering og backup
 
-Opdater via appens side i Home Assistant, når en ny version vises. Ved behov vælges **Søg efter opdateringer** i app-butikken. Opsætningen ligger i `/data/config.json` og følger med en backup af appen. Målehistorikken ligger fortsat i Home Assistant Recorder.
+Opdater via appens side i Home Assistant, når en ny version vises. Ved behov vælges **Søg efter opdateringer** i app-butikken. Opsætningen ligger i `/data/config.json`, den lokale alarmlog i `/data/alerts.json`, og begge følger med en backup af appen. Målehistorikken ligger fortsat i Home Assistant Recorder.
 
 Fra den tidligere Marketplace/HACS-version: Fjern det gamle dashboardkort og dets ressource, og afinstallér den gamle pakke. Bevar ESPHome-enheder og sensorentiteter. Vælg radarerne igen i appen; de gamle koblinger flyttes ikke automatisk.

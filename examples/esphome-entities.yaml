@@ -20,15 +20,28 @@ sensor:
     heart_rate:
       name: Heart rate
       force_update: true
+      filters:
+        - throttle: 5s
+        - timeout: 60s
     breath_rate:
       name: Breath rate
+      unit_of_measurement: breaths/min
       force_update: true
+      filters:
+        - throttle: 5s
+        - timeout: 60s
     distance:
       name: Distance
       force_update: true
+      filters:
+        - throttle: 5s
+        - timeout: 60s
     num_targets:
       name: Target number
       force_update: true
+      filters:
+        - throttle: 5s
+        - timeout: 60s
 
 ---
 # MR60FDA2 device (separate file/device):
